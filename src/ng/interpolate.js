@@ -184,7 +184,6 @@ function $InterpolateProvider() {
      * - `context`: evaluation context for all expressions embedded in the interpolated text
      */
     function $interpolate(text, mustHaveExpression, trustedContext, allOrNothing) {
-      allOrNothing = !!allOrNothing;
       var startIndex,
           endIndex,
           index = 0,
@@ -195,8 +194,7 @@ function $InterpolateProvider() {
           hasInterpolation = false,
           hasText = false,
           exp,
-          concat = [],
-          lastValuesCache = { values: {}, results: {}};
+          concat = [];
 
       while(index < textLength) {
         if ( ((startIndex = text.indexOf(startSymbol, index)) != -1) &&
@@ -283,30 +281,28 @@ function $InterpolateProvider() {
           return value;
         };
 
+        var globalLastValues = [],
+            globalLastResult;
+
         return extend(function interpolationFn(context) {
-            var scopeId = (context && context.$id) || 'notAScope';
-            var lastValues = lastValuesCache.values[scopeId];
-            var lastResult = lastValuesCache.results[scopeId];
+            var lastValuesCache, lastValues, lastResult;
+            if (isScope(context)) {
+              lastValuesCache = context.$$interpolateCache;
+              if (!lastValuesCache) {
+                context.$$interpolateCache = lastValuesCache = {values: {}, results: {}};
+              }
+              lastValues = lastValuesCache.values[text] || [];
+              lastResult = lastValuesCache.results[text];
+            } else {
+              lastValues = globalLastValues;
+              lastResult = globalLastResult;
+            }
+
             var i = 0;
             var ii = expressions.length;
             var values = new Array(ii);
             var val;
             var inputsChanged = lastResult === undefined ? true: false;
-
-
-            // if we haven't seen this context before, initialize the cache and try to setup
-            // a cleanup routine that purges the cache when the scope goes away.
-            if (!lastValues) {
-              lastValues = [];
-              inputsChanged = true;
-              if (context && context.$on) {
-                context.$on('$destroy', function() {
-                  lastValuesCache.values[scopeId] = null;
-                  lastValuesCache.results[scopeId] = null;
-                });
-              }
-            }
-
 
             try {
               interpolationFn.$$unwatch = true;
@@ -325,8 +321,15 @@ function $InterpolateProvider() {
               }
 
               if (inputsChanged) {
-                lastValuesCache.values[scopeId] = values;
-                lastValuesCache.results[scopeId] = lastResult = compute(values);
+                lastResult = compute(values);
+
+                if (lastValuesCache) {
+                  lastValuesCache.values[text] = values;
+                  lastValuesCache.results[text] = lastResult;
+                } else {
+                  globalLastValues = values;
+                  globalLastResult = lastResult;
+                }
               }
             } catch(err) {
               var newErr = $interpolateMinErr('interr', "Can't interpolate: {0}\n{1}", text,
