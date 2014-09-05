@@ -112,7 +112,7 @@ var OPERATORS = extend(createMap(), {
     '/':function(self, locals, a,b){return a(self, locals)/b(self, locals);},
     '%':function(self, locals, a,b){return a(self, locals)%b(self, locals);},
     '^':function(self, locals, a,b){return a(self, locals)^b(self, locals);},
-    '=':noop,
+    '=':true,
     '===':function(self, locals, a, b){return a(self, locals)===b(self, locals);},
     '!==':function(self, locals, a, b){return a(self, locals)!==b(self, locals);},
     '==':function(self, locals, a,b){return a(self, locals)==b(self, locals);},
@@ -125,7 +125,7 @@ var OPERATORS = extend(createMap(), {
     '||':function(self, locals, a,b){return a(self, locals)||b(self, locals);},
     '&':function(self, locals, a,b){return a(self, locals)&b(self, locals);},
 //    '|':function(self, locals, a,b){return a|b;},
-    '|':function(self, locals, a,b){return b(self, locals)(self, locals, a(self, locals));},
+    '|':true,
     '!':function(self, locals, a){return !a(self, locals);}
 });
 /* jshint bitwise: true */
@@ -492,7 +492,8 @@ Parser.prototype = {
     return extend(function(self, locals) {
       return fn(self, locals, right);
     }, {
-      constant:right.constant
+      constant:right.constant,
+      children: [right]
     });
   },
 
@@ -500,7 +501,8 @@ Parser.prototype = {
     return extend(function(self, locals){
       return left(self, locals) ? middle(self, locals) : right(self, locals);
     }, {
-      constant: left.constant && middle.constant && right.constant
+      constant: left.constant && middle.constant && right.constant,
+      children: [left, middle, right]
     });
   },
 
@@ -508,7 +510,8 @@ Parser.prototype = {
     return extend(function(self, locals) {
       return fn(self, locals, left, right);
     }, {
-      constant:left.constant && right.constant
+      constant:left.constant && right.constant,
+      children: [left, right]
     });
   },
 
@@ -537,12 +540,12 @@ Parser.prototype = {
     var left = this.expression();
     var token;
     while ((token = this.expect('|'))) {
-      left = this.binaryFn(left, token.fn, this.filter());
+      left = this.filter(left);
     }
     return left;
   },
 
-  filter: function() {
+  filter: function(input) {
     var token = this.expect();
     var fn = this.$filter(token.text);
     var argsFn;
@@ -556,9 +559,10 @@ Parser.prototype = {
       }
     }
 
-    return valueFn(function $parseFilter(self, locals, input) {
+    return extend(function $parseFilter(self, locals) {
+      var inputVal = input(self, locals);
       if (args) {
-        args[0] = input;
+        args[0] = inputVal;
 
         var i = argsFn.length;
         while (i--) {
@@ -568,7 +572,9 @@ Parser.prototype = {
         return fn.apply(undefined, args);
       }
 
-      return fn(input);
+      return fn(inputVal);
+    }, {
+      children: [input].concat(argsFn || [])
     });
   },
 
@@ -586,9 +592,11 @@ Parser.prototype = {
             this.text.substring(0, token.index) + '] can not be assigned to', token);
       }
       right = this.ternary();
-      return function $parseAssignment(scope, locals) {
+      return extend(function $parseAssignment(scope, locals) {
         return left.assign(scope, right(scope, locals), locals);
-      };
+      }, {
+        children: [left, right]
+      });
     }
     return left;
   },
@@ -688,7 +696,8 @@ Parser.prototype = {
         var o = object(scope, locals);
         if (!o) object.assign(scope, o = {});
         return setter(o, field, value, parserText);
-      }
+      },
+      children: [object, getter]
     });
   },
 
@@ -714,7 +723,8 @@ Parser.prototype = {
         var o = ensureSafeObject(obj(self, locals), parserText);
         if (!o) obj.assign(self, o = {});
         return o[key] = value;
-      }
+      },
+      children: [obj, indexFn]
     });
   },
 
@@ -781,12 +791,13 @@ Parser.prototype = {
       return array;
     }, {
       literal: true,
-      constant: allConstant
+      constant: allConstant,
+      children: elementFns
     });
   },
 
   object: function () {
-    var keyValues = [];
+    var keys = [], values = [];
     var allConstant = true;
     if (this.peekToken().text !== '}') {
       do {
@@ -794,11 +805,11 @@ Parser.prototype = {
           // Support trailing commas per ES5.1.
           break;
         }
-        var token = this.expect(),
-        key = token.string || token.text;
+        var token = this.expect();
+        keys.push(token.string || token.text);
         this.consume(':');
         var value = this.expression();
-        keyValues.push({key: key, value: value});
+        values.push(value);
         if (!value.constant) {
           allConstant = false;
         }
@@ -808,14 +819,14 @@ Parser.prototype = {
 
     return extend(function $parseObjectLiteral(self, locals) {
       var object = {};
-      for (var i = 0, ii = keyValues.length; i < ii; i++) {
-        var keyValue = keyValues[i];
-        object[keyValue.key] = keyValue.value(self, locals);
+      for (var i = 0, ii = values.length; i < ii; i++) {
+        object[keys[i]] = values[i](self, locals);
       }
       return object;
     }, {
       literal: true,
-      constant: allConstant
+      constant: allConstant,
+      children: values
     });
   }
 };
@@ -1044,6 +1055,9 @@ function $ParseProvider() {
               parsedExpression.$$watchDelegate = parsedExpression.literal ?
                 oneTimeLiteralWatchDelegate : oneTimeWatchDelegate;
             }
+            else if (parsedExpression.children) {
+              parsedExpression.$$watchDelegate = childExpressionWatchDelegate;
+            }
 
             cache[cacheKey] = parsedExpression;
           }
@@ -1056,6 +1070,60 @@ function $ParseProvider() {
           return addInterceptor(noop, interceptorFn);
       }
     };
+
+    function collectChildExpressions(e, list) {
+      if (e.children) {
+        for (var i = 0, ii = e.children.length; i < ii; i++) {
+          var child = e.children[i];
+          if (!child.constant) {
+            collectChildExpressions(child, list);
+          }
+        }
+      }
+      else if (!e.constant && -1 === list.indexOf(e)) {
+        list.push(e);
+      }
+
+      return list;
+    }
+    function isPrimitive(o) {
+      var t;
+      return null == o || (t = typeof o) === "number" || t === "string" || t === "boolean";
+    }
+
+    function childExpressionWatchDelegate(scope, listener, objectEquality, parsedExpression) {
+      var inputExpressions = collectChildExpressions(parsedExpression, []);
+
+      var inputs = [NaN];
+      var lastResult;
+
+      if (1 === inputExpressions.length) {
+        inputs = inputs[0];
+        inputExpressions = inputExpressions[0];
+        return scope.$watch(function expressionInputWatch(scope) {
+          var newVal = inputExpressions(scope);
+          if (newVal !== inputs || !isPrimitive(newVal)) {
+            lastResult = parsedExpression(scope);
+            inputs = newVal;
+          }
+          return lastResult;
+        }, listener, objectEquality);
+      }
+
+      return scope.$watch(function expressionInputsWatch(scope) {
+        var changed = false;
+
+        for (var i=0, ii=inputExpressions.length; i<ii; i++) {
+          var valI = inputExpressions[i](scope);
+          changed = changed || valI !== inputs[i] || !isPrimitive(valI);
+          if (changed) {
+            inputs[i] = valI;
+          }
+        }
+
+        return changed ? (lastResult = parsedExpression(scope)) : lastResult;
+      }, listener, objectEquality);
+    }
 
     function oneTimeWatchDelegate(scope, listener, objectEquality, parsedExpression) {
       var unwatch, lastValue;
