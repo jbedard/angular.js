@@ -577,6 +577,7 @@ Parser.prototype = {
   },
 
   assignment: function() {
+    var parserText = this.text;
     var left = this.ternary();
     var right;
     var token;
@@ -587,7 +588,7 @@ Parser.prototype = {
       }
       right = this.ternary();
       return function $parseAssignment(scope, locals) {
-        return left.assign(scope, right(scope, locals), locals);
+        return left.assign(scope, right(scope, locals), locals, parserText);
       };
     }
     return left;
@@ -686,7 +687,7 @@ Parser.prototype = {
     }, {
       assign: function(scope, value, locals) {
         var o = object(scope, locals);
-        if (!o) object.assign(scope, o = {});
+        if (!o) object.assign(scope, o = {}, null, parserText);
         return setter(o, field, value, parserText);
       }
     });
@@ -712,7 +713,7 @@ Parser.prototype = {
         var key = ensureSafeMemberName(indexFn(self, locals), parserText);
         // prevent overwriting of Function.constructor which would break ensureSafeObject check
         var o = ensureSafeObject(obj(self, locals), parserText);
-        if (!o) obj.assign(self, o = {});
+        if (!o) obj.assign(self, o = {}, null, parserText);
         return o[key] = value;
       }
     });
@@ -926,8 +927,8 @@ function getterFn(path, options, fullExp) {
     var evaledFnGetter = new Function('s', 'l', code); // s=scope, l=locals
     /* jshint +W054 */
     evaledFnGetter.toString = valueFn(code);
-    evaledFnGetter.assign = function(self, value) {
-      return setter(self, path, value, path);
+    evaledFnGetter.assign = function(self, value, locals, fullExp) {
+      return setter(self, path, value, fullExp || path);
     };
 
     fn = evaledFnGetter;
