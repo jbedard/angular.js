@@ -1119,23 +1119,100 @@ function $ParseProvider() {
       //Primitive or NaN
       return o1 === o2 || (o1 !== o1 && o2 !== o2);
     }
+    function collectInputs(exp, all) {
+      if (exp.inputs) {
+        for (var i = 0, ii = exp.inputs.length; i < ii; i++) {
+          collectInputs(exp.inputs[i], all);
+        }
+      }
+      else if (exp.constant || -1 !== all.indexOf(exp)) {
+        all.hasIndexMapping = true;
+      }
+      else {
+        all.push(exp);
+      }
+
+      return all;
+    }
+
+    function collectExecutors(exp, watchedInputs) {
+      var expInputs = exp.inputs;
+      var expInputsExecute = exp.inputsExecute;
+
+      //These 3 variables are SHARED and reused for each watcher
+      var values = [];    //The values to pass to the exp
+      var indexes = [];   //The values index => watchedInputs index map
+      var subExps = [];   //For exp inputs which are sub expressions
+
+      //Calculate where each input of this expression comes from: subExp, watchedInput, otherwise constant
+      for (var i=0, ii=expInputs.length; i<ii; i++) {
+        if (expInputs[i].inputs) {
+          subExps[i] = collectExecutors(expInputs[i], watchedInputs);
+          indexes[i] = -1;
+        }
+        else {
+          indexes[i] = watchedInputs.indexOf(expInputs[i]);
+        }
+      }
+
+      //All inputs are on the root => no recursion required
+      if (0 === subExps.length) {
+        //The watched inputs on the root are equal to the inputs => no array indexing required
+        if (!watchedInputs.hasIndexMapping) {
+          return expInputsExecute;
+        }
+
+        //Array indexing required, but can be a simplified version without subExps
+        return function $parseIndexingExecutor(watchedValues, scope) {
+          for (var i = 0, ii = expInputs.length; i < ii; i++) {
+            var j = indexes[i];
+            values[i] = (-1 === j) ? expInputs[i](scope) : watchedValues[j];
+          }
+          return expInputsExecute(values, scope);
+        };
+      }
+
+      //Recursive subExps and indexing required
+      return function $parseIndexingRecursiveExecutor(watchedValues, scope) {
+        for (var i = 0, ii = expInputs.length; i < ii; i++) {
+          var j = indexes[i];
+          if (-1 !== j) {
+            values[i] = watchedValues[j];
+          }
+          else if (subExps[i]) {
+            values[i] = subExps[i](watchedValues, scope);
+          }
+          else {
+            values[i] = expInputs[i](scope);
+          }
+        }
+        return expInputsExecute(values, scope);
+      };
+    }
+
     function inputsWatchDelegate(scope, listener, objectEquality, parsedExpression) {
-      var inputs = parsedExpression.inputs;
-      var inputsExecute = parsedExpression.inputsExecute;
-      var inputValues = [simpleEquals/*=something unique and non accessible to expressions*/];
+      //Cache the list of watchedInputs and the generated executor to avoid regenerating the same data
+      //The executors also have metadata and reusable/cached objects
+      var watchedInputs  = parsedExpression.$$watchedInputs ||
+                           (parsedExpression.$$watchedInputs = collectInputs(parsedExpression, []));
+      var inputsExecute = parsedExpression.$$watchedInputsExecute ||
+                           (parsedExpression.$$watchedInputsExecute = collectExecutors(parsedExpression, watchedInputs));
+
+      var watchedInputValues = [simpleEquals/*=something that can never be returned from an expression*/];
       var result;
 
       var interceptorFactory = parsedExpression.inputsInterceptorFactory || identity;
 
-      if (1 === inputs.length) {
-        var input = inputs[0];
-        var inputValue = inputValues[0];
-
+      //Return a simplified no-loop version when there is only one watched input
+      if (1 === watchedInputs.length) {
+        var watchedInput = watchedInputs[0];
+        var watchedInputValue = watchedInputValues[0];
         return scope.$watch(interceptorFactory(function inputWatch(scope) {
-          var newValue = input(scope);
-          if (!simpleEquals(newValue, inputValue)) {
-            inputValues[0] = inputValue = newValue;
-            result = inputsExecute(inputValues, scope);
+          //NOTE: avoiding the [0] unless the value has changed makes a major perf difference
+          var value = watchedInput(scope);
+          if (!simpleEquals(value, watchedInputValue)) {
+            watchedInputValues[0] = watchedInputValue = value;
+            result = inputsExecute(watchedInputValues, scope);
           }
           return result;
         }), listener, objectEquality);
@@ -1144,19 +1221,31 @@ function $ParseProvider() {
       return scope.$watch(interceptorFactory(function inputsWatch(scope) {
         var changed = false;
 
-        for (var i = 0, len = inputs.length; i < len; i++) {
-          var valueI = inputs[i](scope);
-          if (changed || (changed = !simpleEquals(inputValues[i], valueI))) {
-            inputValues[i] = valueI;
+        for (var i = 0, len = watchedInputs.length; i < len; i++) {
+          var valueI = watchedInputs[i](scope);
+          if (changed || (changed = !simpleEquals(watchedInputValues[i], valueI))) {
+            watchedInputValues[i] = valueI;
           }
         }
 
         if (changed) {
-          result = inputsExecute(inputValues, scope);
+          result = inputsExecute(watchedInputValues, scope);
         }
 
         return result;
       }), listener, objectEquality);
+
+      //TODO: would be great to use $watchGroup but we need the `simpleEquals` equality test
+      // var oldResult;
+      // return scope.$watchGroup(watchedInputs, function(values, oldValues, scope) {
+      //   var newResult = inputsExecute(values, scope);
+      //   if (isFunction(listener)) {
+      //     if (values === oldValues || !equals(newResult, oldResult)) {
+      //       listener.call(this, newResult, values === oldValues ? newResult : oldResult, scope);
+      //     }
+      //   }
+      //   oldResult = newResult;
+      // });
     }
 
     function oneTimeWatchDelegate(scope, listener, objectEquality, parsedExpression) {
