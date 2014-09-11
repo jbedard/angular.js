@@ -95,8 +95,7 @@ forEach({
 //Operators - will be wrapped by binaryFn/unaryFn/assignment/filter
 var OPERATORS = extend(createMap(), {
     /* jshint bitwise : false */
-    '+':function(self, locals, a,b){
-      a=a(self, locals); b=b(self, locals);
+    '+':function(a,b){
       if (isDefined(a)) {
         if (isDefined(b)) {
           return a + b;
@@ -104,27 +103,25 @@ var OPERATORS = extend(createMap(), {
         return a;
       }
       return isDefined(b)?b:undefined;},
-    '-':function(self, locals, a,b){
-          a=a(self, locals); b=b(self, locals);
-          return (isDefined(a)?a:0)-(isDefined(b)?b:0);
-        },
-    '*':function(self, locals, a,b){return a(self, locals)*b(self, locals);},
-    '/':function(self, locals, a,b){return a(self, locals)/b(self, locals);},
-    '%':function(self, locals, a,b){return a(self, locals)%b(self, locals);},
-    '^':function(self, locals, a,b){return a(self, locals)^b(self, locals);},
-    '===':function(self, locals, a, b){return a(self, locals)===b(self, locals);},
-    '!==':function(self, locals, a, b){return a(self, locals)!==b(self, locals);},
-    '==':function(self, locals, a,b){return a(self, locals)==b(self, locals);},
-    '!=':function(self, locals, a,b){return a(self, locals)!=b(self, locals);},
-    '<':function(self, locals, a,b){return a(self, locals)<b(self, locals);},
-    '>':function(self, locals, a,b){return a(self, locals)>b(self, locals);},
-    '<=':function(self, locals, a,b){return a(self, locals)<=b(self, locals);},
-    '>=':function(self, locals, a,b){return a(self, locals)>=b(self, locals);},
-    '&&':function(self, locals, a,b){return a(self, locals)&&b(self, locals);},
-    '||':function(self, locals, a,b){return a(self, locals)||b(self, locals);},
-    '&':function(self, locals, a,b){return a(self, locals)&b(self, locals);},
-//    '|':function(self, locals, a,b){return a|b;},
-    '!':function(self, locals, a){return !a(self, locals);},
+    '-':function(a,b){ return (isDefined(a)?a:0)-(isDefined(b)?b:0);},
+    '*':function(a,b){return a*b;},
+    '/':function(a,b){return a/b;},
+    '%':function(a,b){return a%b;},
+    '^':function(a,b){return a^b;},
+    '===':function(a, b){return a===b;},
+    '!==':function(a, b){return a!==b;},
+    '==':function(a,b){return a==b;},
+    '!=':function(a,b){return a!=b;},
+    '<':function(a,b){return a<b;},
+    '>':function(a,b){return a>b;},
+    '<=':function(a,b){return a<=b;},
+    '>=':function(a,b){return a>=b;},
+    '&':function(a,b){return a&b;},
+    '!':function(a){return !a;},
+
+    //Tokenized as operators but executed separatly due to the short-circuiting
+    '&&': true,
+    '||': true,
 
     //Tokenized as operators but parsed as assignment/filters
     '=':true,
@@ -492,9 +489,13 @@ Parser.prototype = {
 
   unaryFn: function(fn, right) {
     return extend(function(self, locals) {
-      return fn(self, locals, right);
+      return fn(right(self, locals));
     }, {
-      constant:right.constant
+      constant:right.constant,
+      inputs: [right],
+      inputsExecute: function(inputs) {
+        return fn(inputs[0]);
+      }
     });
   },
 
@@ -508,7 +509,27 @@ Parser.prototype = {
 
   binaryFn: function(left, fn, right) {
     return extend(function(self, locals) {
-      return fn(self, locals, left, right);
+      return fn(left(self, locals), right(self, locals));
+    }, {
+      constant:left.constant && right.constant,
+      inputs: [left, right],
+      inputsExecute: function(inputs) {
+        return fn(inputs[0], inputs[1]);
+      }
+    });
+  },
+
+  andFn: function(left, right) {
+    return extend(function $parseAND(self, locals) {
+      return left(self, locals) && right(self, locals);
+    }, {
+      constant:left.constant && right.constant
+    });
+  },
+
+  orFn: function(left, right) {
+    return extend(function $parseOR(self, locals) {
+      return left(self, locals) || right(self, locals);
     }, {
       constant:left.constant && right.constant
     });
@@ -624,7 +645,7 @@ Parser.prototype = {
     var left = this.logicalAND();
     var token;
     while ((token = this.expect('||'))) {
-      left = this.binaryFn(left, token.fn, this.logicalAND());
+      left = this.orFn(left, this.logicalAND());
     }
     return left;
   },
@@ -633,7 +654,7 @@ Parser.prototype = {
     var left = this.equality();
     var token;
     if ((token = this.expect('&&'))) {
-      left = this.binaryFn(left, token.fn, this.logicalAND());
+      left = this.andFn(left, this.logicalAND());
     }
     return left;
   },
