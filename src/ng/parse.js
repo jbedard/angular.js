@@ -558,7 +558,7 @@ Parser.prototype = {
       }
     }
 
-    return function $parseFilter(self, locals) {
+    return extend(function $parseFilter(self, locals) {
       var input = inputFn(self, locals);
       if (args) {
         args[0] = input;
@@ -572,7 +572,15 @@ Parser.prototype = {
       }
 
       return fn(input);
-    };
+    }, {
+      inputs: !fn.externalInput && [inputFn].concat(argsFn || []),
+      inputsExecute: function(values) {
+        if (args) {
+          return fn.apply(undefined, values);
+        }
+        return fn(values[0]);
+      }
+    });
   },
 
   expression: function() {
@@ -784,7 +792,11 @@ Parser.prototype = {
       return array;
     }, {
       literal: true,
-      constant: allConstant
+      constant: allConstant,
+      inputs: elementFns,
+      inputsExecute: function(values) {
+        return values.slice();
+      }
     });
   },
 
@@ -817,7 +829,15 @@ Parser.prototype = {
       return object;
     }, {
       literal: true,
-      constant: allConstant
+      constant: allConstant,
+      inputs: values,
+      inputsExecute: function(values) {
+        var object = {};
+        for (var i = 0, ii = keys.length; i < ii; i++) {
+          object[keys[i]] = values[i];
+        }
+        return object;
+      }
     });
   }
 };
@@ -1044,6 +1064,8 @@ function $ParseProvider() {
               parsedExpression = wrapSharedExpression(parsedExpression);
               parsedExpression.$$watchDelegate = parsedExpression.literal ?
                 oneTimeLiteralWatchDelegate : oneTimeWatchDelegate;
+            } else if (parsedExpression.inputs) {
+              parsedExpression.$$watchDelegate = inputsWatchDelegate;
             }
 
             cache[cacheKey] = parsedExpression;
@@ -1057,6 +1079,64 @@ function $ParseProvider() {
           return addInterceptor(noop, interceptorFn);
       }
     };
+
+    function simpleEquals(o1, o2) {
+      if (o1 == null || o2 == null) return o1 === o2; // null/undefined
+
+      if (typeof o1 === "object") {
+        if (typeof o2 !== "object") return false;
+
+        //Simple and common objects
+        if (isDate(o1) && isDate(o2)) {
+          return simpleEquals(o1.getTime(), o2.getTime());
+        }
+
+        //Otherwise objects are not supported - recursing over arrays/object would be too expensive
+        return false;
+      }
+
+      //Primitive or NaN
+      return o1 === o2 || (o1 !== o1 && o2 !== o2);
+    }
+    function inputsWatchDelegate(scope, listener, objectEquality, parsedExpression) {
+      var inputs = parsedExpression.inputs;
+      var inputsExecute = parsedExpression.inputsExecute;
+      var inputValues = [simpleEquals/*=something unique and non accessible to expressions*/];
+      var result;
+
+      var interceptorFactory = parsedExpression.inputsInterceptorFactory || identity;
+
+      if (1 === inputs.length) {
+        var input = inputs[0];
+        var inputValue = inputValues[0];
+
+        return scope.$watch(interceptorFactory(function inputWatch(scope) {
+          var newValue = input(scope);
+          if (!simpleEquals(newValue, inputValue)) {
+            inputValues[0] = inputValue = newValue;
+            result = inputsExecute(inputValues, scope);
+          }
+          return result;
+        }), listener, objectEquality);
+      }
+
+      return scope.$watch(interceptorFactory(function inputsWatch(scope) {
+        var changed = false;
+
+        for (var i = 0, len = inputs.length; i < len; i++) {
+          var valueI = inputs[i](scope);
+          if (changed || (changed = !simpleEquals(inputValues[i], valueI))) {
+            inputValues[i] = valueI;
+          }
+        }
+
+        if (changed) {
+          result = inputsExecute(inputValues, scope);
+        }
+
+        return result;
+      }), listener, objectEquality);
+    }
 
     function oneTimeWatchDelegate(scope, listener, objectEquality, parsedExpression) {
       var unwatch, lastValue;
@@ -1123,6 +1203,23 @@ function $ParseProvider() {
         // initial value is defined (for bind-once)
         return isDefined(value) ? result : value;
       };
+
+      if (parsedExpression.inputs) {
+        fn.inputsInterceptorFactory = function(inputsWatcher) {
+          //TODO: copying the logic in this method is lame...
+          return function inputsInterceptor(scope, locals) {
+            var value = inputsWatcher(scope, locals);
+            var result = interceptorFn(value, scope, locals);
+            // we only return the interceptor's result if the
+            // initial value is defined (for bind-once)
+            return isDefined(value) ? result : value;
+          };
+        };
+
+        fn.inputsExecute = parsedExpression.inputsExecute;
+        fn.inputs = parsedExpression.inputs;
+      }
+
       fn.$$watchDelegate = parsedExpression.$$watchDelegate;
       return fn;
     }
