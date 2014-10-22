@@ -1830,7 +1830,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           return value || null;
         } else if (isArray(require)) {
           value = [];
-          forEach(require, function(require) {
+          forEach(require, function getControllersEach(require) {
             value.push(getControllers(directiveName, require, $element, elementControllers));
           });
         }
@@ -1865,7 +1865,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           // TODO: merge `controllers` and `elementControllers` into single object.
           controllers = {};
           elementControllers = {};
-          forEach(controllerDirectives, function(directive) {
+          forEach(controllerDirectives, function nodeLinkControllers(directive) {
             var locals = {
               $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
               $element: $element,
@@ -1906,7 +1906,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             isolateBindingContext = isolateScopeController.instance;
           }
 
-          forEach(isolateScope.$$isolateBindings = newIsolateScopeDirective.$$isolateBindings, function(definition, scopeName) {
+          forEach(isolateScope.$$isolateBindings = newIsolateScopeDirective.$$isolateBindings, function nodeLinkIsolated(definition, scopeName) {
             var attrName = definition.attrName,
                 optional = definition.optional,
                 mode = definition.mode, // @, =, or &
@@ -1978,7 +1978,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           });
         }
         if (controllers) {
-          forEach(controllers, function(controller) {
+          forEach(controllers, function nodeLinkInitController(controller) {
             controller();
           });
           controllers = null;
