@@ -169,4 +169,38 @@ describe('$controller', function() {
 
     });
   });
+
+  describe('ctrl later', function() {
+    it('should return a delayed constructor instance', function() {
+      function Ctrl() {
+        this.prop = 123;
+      }
+      Ctrl.prop = 123;
+      Ctrl.prototype.foobar = Ctrl.foobar = function() { return this.prop; };
+
+      var setup = $controller(Ctrl, {}, true);
+      var instance = setup.instance;
+
+      expect(Object.getPrototypeOf(instance)).toBe(Ctrl.prototype);
+      expect(instance.foobar()).not.toBeDefined();
+
+      setup();
+      expect(instance.foobar()).toBe(123);
+      instance.prop = 456;
+      expect(instance.foobar()).toBe(456);
+    });
+
+    it('should work with inherited constructors', function() {
+      function Parent() {}
+      function Child() {}
+      Child.prototype = new Parent();
+
+      var parent  = $controller(Parent, {}, true).instance;
+      var parent2 = $controller(Parent, {}, true).instance;
+      var child   = $controller(Child, {}, true).instance;
+
+      expect(parent.constructor).toBe(parent2.constructor, "should reuse the base controller");
+      expect(Object.getPrototypeOf(child)).toBe(Child.prototype);
+    });
+  });
 });

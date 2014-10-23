@@ -109,9 +109,13 @@ function $ControllerProvider() {
         // This feature is not intended for use by applications, and is thus not documented
         // publicly.
         // Object creation: http://jsperf.com/create-constructor/2
-        var controllerPrototype = (isArray(expression) ?
-          expression[expression.length - 1] : expression).prototype;
-        instance = Object.create(controllerPrototype || null);
+        constructor = isArray(expression) ? expression[expression.length - 1] : expression;
+        var Constructor = constructor.$$Constructor;
+        if (!Constructor) {
+          Constructor = constructor.$$Constructor = function Constructor() {};
+          Constructor.prototype = constructor.prototype;
+        }
+        instance = new Constructor();
 
         if (identifier) {
           addIdentifier(locals, identifier, instance, constructor || expression.name);
