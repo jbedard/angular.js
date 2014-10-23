@@ -1791,54 +1791,48 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
 
 
       function getControllers(directiveName, require, $element, elementControllers) {
-        var value, retrievalMethod = 'data', optional = false;
-        var $searchElement = $element;
-        var match;
-        if (isString(require)) {
-          match = require.match(REQUIRE_PREFIX_REGEXP);
-          require = require.substring(match[0].length);
+        var i, value;
 
-          if (match[3]) {
-            if (match[1]) match[3] = null;
-            else match[1] = match[3];
-          }
-          if (match[1] === '^') {
-            retrievalMethod = 'inheritedData';
-          } else if (match[1] === '^^') {
-            retrievalMethod = 'inheritedData';
-            $searchElement = $element.parent();
-          }
-          if (match[2] === '?') {
-            optional = true;
+        if (typeof require === 'string') {
+          var match = require.match(REQUIRE_PREFIX_REGEXP);
+          var name = require.substring(match[0].length);
+          var type = match[1] || match[3];
+
+          //If only parents then start at the parent element
+          //Otherwise attempt getting the controller from elementControllers to avoid .data
+          if (type === '^^') {
+            $element = $element.parent();
+          } else {
+            value = elementControllers && elementControllers[name];
+            value = value && value.instance;
           }
 
-          value = null;
-
-          if (elementControllers && retrievalMethod === 'data') {
-            if (value = elementControllers[require]) {
-              value = value.instance;
-            }
+          if (!value) {
+            var dataName = '$' + name + 'Controller';
+            value = type ? $element.inheritedData(dataName) : $element.data(dataName);
           }
-          value = value || $searchElement[retrievalMethod]('$' + require + 'Controller');
 
-          if (!value && !optional) {
+          if (!value && match[2] !== '?') {
             throw $compileMinErr('ctreq',
                 "Controller '{0}', required by directive '{1}', can't be found!",
-                require, directiveName);
+                name, directiveName);
           }
+
           return value || null;
-        } else if (isArray(require)) {
-          value = [];
-          forEach(require, function getControllersEach(require) {
-            value.push(getControllers(directiveName, require, $element, elementControllers));
-          });
         }
-        return value;
+
+        if (isArray(require)) {
+          value = new Array(i = require.length);
+          while (i--) {
+            value[i] = getControllers(directiveName, require[i], $element, elementControllers);
+          }
+          return value;
+        }
       }
 
 
       function nodeLinkFn(childLinkFn, scope, linkNode, $rootElement, boundTranscludeFn) {
-        var i, ii, linkFn, controller, isolateScope, elementControllers, transcludeFn, $element,
+        var i, ii, linkFn, directive, controller, isolateScope, elementControllers, transcludeFn, $element,
             attrs;
 
         if (compileNode === linkNode) {
@@ -1863,31 +1857,35 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         if (controllerDirectives) {
           elementControllers = {};
 
-          forEach(controllerDirectives, function nodeLinkControllers(directive) {
+          // For directives with element transclusion the element is a comment,
+          // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
+          // clean up (http://bugs.jquery.com/ticket/8335).
+          // Instead, we save the controllers for the element in a local hash and attach to .data
+          // later, once we have the actual element.
+          var controllerData = !hasElementTranscludeDirective && $element.data();
+
+          for (var directiveName in controllerDirectives) {
+            var directive = controllerDirectives[directiveName];
+
             var locals = {
               $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
               $element: $element,
               $attrs: attrs,
               $transclude: transcludeFn
-            }, controllerInstance;
+            };
 
-            controller = directive.controller;
-            if (controller == '@') {
+            var controller = directive.controller;
+            if (controller === '@') {
               controller = attrs[directive.name];
             }
 
-            controllerInstance = $controller(controller, locals, true, directive.controllerAs);
+            var controllerInstance = $controller(controller, locals, true, directive.controllerAs);
 
-            // For directives with element transclusion the element is a comment,
-            // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
-            // clean up (http://bugs.jquery.com/ticket/8335).
-            // Instead, we save the controllers for the element in a local hash and attach to .data
-            // later, once we have the actual element.
             elementControllers[directive.name] = controllerInstance;
-            if (!hasElementTranscludeDirective) {
-              $element.data('$' + directive.name + 'Controller', controllerInstance.instance);
+            if (controllerData) {
+              controllerData['$' + directive.name + 'Controller'] = controllerInstance.instance;
             }
-          });
+          }
         }
 
         if (newIsolateScopeDirective) {
@@ -1974,10 +1972,9 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           });
         }
 
-        if (elementControllers) {
-          forEach(elementControllers, function nodeLinkInitController(controller) {
-            controller();
-          });
+        // Initialize the controllers before linking
+        for (i in elementControllers) {
+          elementControllers[i]();
         }
 
         // PRELINKING
