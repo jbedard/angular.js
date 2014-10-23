@@ -1566,7 +1566,6 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
       var terminalPriority = -Number.MAX_VALUE,
           newScopeDirective,
           controllerDirectives = previousCompileContext.controllerDirectives,
-          controllers,
           newIsolateScopeDirective = previousCompileContext.newIsolateScopeDirective,
           templateDirective = previousCompileContext.templateDirective,
           nonTlbTranscludeDirective = previousCompileContext.nonTlbTranscludeDirective,
@@ -1862,9 +1861,8 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         }
 
         if (controllerDirectives) {
-          // TODO: merge `controllers` and `elementControllers` into single object.
-          controllers = {};
           elementControllers = {};
+
           forEach(controllerDirectives, function nodeLinkControllers(directive) {
             var locals = {
               $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
@@ -1889,8 +1887,6 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             if (!hasElementTranscludeDirective) {
               $element.data('$' + directive.name + 'Controller', controllerInstance.instance);
             }
-
-            controllers[directive.name] = controllerInstance;
           });
         }
 
@@ -1899,7 +1895,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
               templateDirective === newIsolateScopeDirective.$$originalDirective)));
           compile.$$addScopeClass($element, true);
 
-          var isolateScopeController = controllers && controllers[newIsolateScopeDirective.name];
+          var isolateScopeController = elementControllers && elementControllers[newIsolateScopeDirective.name];
           var isolateBindingContext = isolateScope;
           if (isolateScopeController && isolateScopeController.identifier &&
               newIsolateScopeDirective.bindToController === true) {
@@ -1977,11 +1973,11 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             }
           });
         }
-        if (controllers) {
-          forEach(controllers, function nodeLinkInitController(controller) {
+
+        if (elementControllers) {
+          forEach(elementControllers, function nodeLinkInitController(controller) {
             controller();
           });
-          controllers = null;
         }
 
         // PRELINKING
