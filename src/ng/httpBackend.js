@@ -146,8 +146,8 @@ function createHttpBackend($browser, createXhr, $browserDefer, callbacks, rawDoc
     script.async = true;
 
     callback = function(event) {
-      removeEventListenerFn(script, "load", callback);
-      removeEventListenerFn(script, "error", callback);
+      script.removeEventListener("load", callback, false);
+      script.removeEventListener("error", callback, false);
       rawDocument.body.removeChild(script);
       script = null;
       var status = -1;
@@ -166,8 +166,8 @@ function createHttpBackend($browser, createXhr, $browserDefer, callbacks, rawDoc
       }
     };
 
-    addEventListenerFn(script, "load", callback);
-    addEventListenerFn(script, "error", callback);
+    script.addEventListener("load", callback, false);
+    script.addEventListener("error", callback, false);
     rawDocument.body.appendChild(script);
     return callback;
   }

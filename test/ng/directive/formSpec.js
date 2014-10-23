@@ -283,7 +283,7 @@ describe('form', function() {
         submitted = true;
       };
 
-      addEventListenerFn(doc[0], 'submit', assertPreventDefaultListener);
+      doc[0].addEventListener('submit', assertPreventDefaultListener, false);
 
       browserTrigger(doc.find('input'));
 
@@ -297,7 +297,7 @@ describe('form', function() {
         expect(submitted).toBe(true);
 
         // prevent mem leak in test
-        removeEventListenerFn(doc[0], 'submit', assertPreventDefaultListener);
+        doc[0].removeEventListener('submit', assertPreventDefaultListener, false);
       });
     });
 
@@ -334,7 +334,7 @@ describe('form', function() {
 
       $compile(doc)(scope);
 
-      addEventListenerFn(form[0], 'submit', assertPreventDefaultListener);
+      form[0].addEventListener('submit', assertPreventDefaultListener, false);
 
       browserTrigger(doc.find('button'), 'click');
 
@@ -353,7 +353,7 @@ describe('form', function() {
                                        // now. (i)
 
         // prevent mem leak in test
-        removeEventListenerFn(form[0], 'submit', assertPreventDefaultListener);
+        form[0].removeEventListener('submit', assertPreventDefaultListener, false);
       });
     }));
 
