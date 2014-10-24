@@ -1830,10 +1830,41 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         }
       }
 
+      function setupControllers(scope, isolateScope, $element, attrs, transcludeFn, elementControllers) {
+        // For directives with element transclusion the element is a comment,
+        // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
+        // clean up (http://bugs.jquery.com/ticket/8335).
+        // Instead, we save the controllers for the element in a local hash and attach to .data
+        // later, once we have the actual element.
+        var controllerData = !hasElementTranscludeDirective && $element.data();
+
+        for (var directiveName in controllerDirectives) {
+          var directive = controllerDirectives[directiveName];
+
+          var locals = {
+            $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
+            $element: $element,
+            $attrs: attrs,
+            $transclude: transcludeFn
+          };
+
+          var controller = directive.controller;
+          if (controller === '@') {
+            controller = attrs[directive.name];
+          }
+
+          var controllerInstance = $controller(controller, locals, true, directive.controllerAs);
+
+          elementControllers[directive.name] = controllerInstance;
+          if (controllerData) {
+            controllerData['$' + directive.name + 'Controller'] = controllerInstance.instance;
+          }
+        }
+      }
+
 
       function nodeLinkFn(childLinkFn, scope, linkNode, $rootElement, boundTranscludeFn) {
-        var i, ii, linkFn, directive, controller, isolateScope, elementControllers, transcludeFn, $element,
-            attrs;
+        var i, ii, linkFn, isolateScope, elementControllers, transcludeFn, $element, attrs;
 
         if (compileNode === linkNode) {
           attrs = templateAttrs;
@@ -1855,37 +1886,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         }
 
         if (controllerDirectives) {
-          elementControllers = {};
-
-          // For directives with element transclusion the element is a comment,
-          // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
-          // clean up (http://bugs.jquery.com/ticket/8335).
-          // Instead, we save the controllers for the element in a local hash and attach to .data
-          // later, once we have the actual element.
-          var controllerData = !hasElementTranscludeDirective && $element.data();
-
-          for (var directiveName in controllerDirectives) {
-            var directive = controllerDirectives[directiveName];
-
-            var locals = {
-              $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
-              $element: $element,
-              $attrs: attrs,
-              $transclude: transcludeFn
-            };
-
-            var controller = directive.controller;
-            if (controller === '@') {
-              controller = attrs[directive.name];
-            }
-
-            var controllerInstance = $controller(controller, locals, true, directive.controllerAs);
-
-            elementControllers[directive.name] = controllerInstance;
-            if (controllerData) {
-              controllerData['$' + directive.name + 'Controller'] = controllerInstance.instance;
-            }
-          }
+          setupControllers(scope, isolateScope, $element, attrs, transcludeFn, elementControllers = {});
         }
 
         if (newIsolateScopeDirective) {
@@ -1973,8 +1974,8 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         }
 
         // Initialize the controllers before linking
-        for (i in elementControllers) {
-          elementControllers[i]();
+        if (elementControllers) {
+          invokeEach(elementControllers);
         }
 
         // PRELINKING
@@ -2030,6 +2031,12 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           }
           return boundTranscludeFn(scope, cloneAttachFn, transcludeControllers, futureParentElement, scopeToChild);
         }
+      }
+    }
+
+    function invokeEach(funcs) {
+      for (var key in funcs) {
+        funcs[key]();
       }
     }
 
