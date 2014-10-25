@@ -12,6 +12,15 @@ app.filter('noop', function() {
   };
 });
 
+app.directive('interpedAttr', function() {
+  return {
+    restrict: 'A',
+    scope: {
+      value: '@interpedAttr'
+    }
+  };
+});
+
 app.controller('DataController', function($scope, $rootScope) {
   var totalRows = 1000;
   var totalColumns = 20;

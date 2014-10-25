@@ -14,6 +14,9 @@
       <div>ngBind: <input type="radio" ng-model="benchmarkType" value="ngBind"></div>
       <div>ngBindOnce: <input type="radio" ng-model="benchmarkType" value="ngBindOnce"></div>
       <div>interpolation: <input type="radio" ng-model="benchmarkType" value="interpolation"></div>
+      <div>attrInterpolation: <input type="radio" ng-model="benchmarkType" value="attrInterpolation"></div>
+      <div>partial attrInterpolation: <input type="radio" ng-model="benchmarkType" value="partialAttrInterpolation"></div>
+      <div>isolated attr interpolation: <input type="radio" ng-model="benchmarkType" value="isolatedAttrInterpolation"></div>
       <div>ngBind + fnInvocation: <input type="radio" ng-model="benchmarkType" value="ngBindFn"></div>
       <div>interpolation + fnInvocation: <input type="radio" ng-model="benchmarkType" value="interpolationFn"></div>
       <div>ngBind + filter: <input type="radio" ng-model="benchmarkType" value="ngBindFilter"></div>
@@ -44,6 +47,25 @@
           <h2>baseline interpolation</h2>
           <div ng-repeat="row in data">
             <span ng-repeat="column in row">{{column.i}}:{{column.j}}|</span>
+          </div>
+        </div>
+        <div ng-switch-when="attrInterpolation">
+          <h2>baseline attribute interpolation</h2>
+          <div ng-repeat="row in data">
+            <span ng-repeat="column in row" data-stuff="{{column.i}}:{{column.j}}|"></span>
+          </div>
+        </div>
+        <div ng-switch-when="partialAttrInterpolation">
+          <h2>partial attribute interpolation</h2>
+          <div ng-repeat="row in data" data-stuff="no interp here">
+            <span ng-repeat="column in row" data-stuff="{{column.i}}:{{column.j}}|" data-morestuff="or here"></span>
+            <span data-stuff="or here!"></span>
+          </div>
+        </div>
+        <div ng-switch-when="isolatedAttrInterpolation">
+          <h2>isolated attribute interpolation</h2>
+          <div ng-repeat="row in data">
+            <span ng-repeat="column in row" interped-attr="{{column.i}}:{{column.j}}|"></span>
           </div>
         </div>
         <div ng-switch-when="ngBindFn">
