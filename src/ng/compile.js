@@ -1560,6 +1560,19 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           linkFn,
           directiveValue;
 
+      // Helper/cache to $interpolate + evaluate a string while caching each $interpolate()
+      function runInterpolate(value, scope) {
+        var cache = runInterpolate.$$cache || (runInterpolate.$$cache = createMap());
+        var interped;
+        if (value in cache) {
+          interped = cache[value];
+        } else {
+          interped = cache[value] = $interpolate(value, true);
+        }
+
+        return interped ? interped(scope) : value;
+      }
+
       // executes all directives on the current element
       for (var i = 0, ii = directives.length; i < ii; i++) {
         directive = directives[i];
@@ -1901,7 +1914,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
                 if (attrs[attrName]) {
                   // If the attribute has been provided then we trigger an interpolation to ensure
                   // the value is there for use in the link fn
-                  isolateBindingContext[scopeName] = $interpolate(attrs[attrName])(scope);
+                  isolateBindingContext[scopeName] = runInterpolate(attrs[attrName], scope);
                 }
                 break;
 
