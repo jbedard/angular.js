@@ -2093,6 +2093,55 @@ describe('input', function() {
           'ng-model-options="{ getterSetter: true }" />');
     });
 
+    it('should invoke a model in the correct context if getterSetter is true', function() {
+      compileInput(
+        '<input type="text" ng-model="someService.getterSetter" ' +
+          'ng-model-options="{ getterSetter: true }" />');
+
+      scope.someService = {
+        value: 'a',
+        getterSetter: function(newValue) {
+          this.value = newValue || this.value;
+          return this.value;
+        }
+      };
+      spyOn(scope.someService, 'getterSetter').andCallThrough();
+      scope.$apply();
+
+      expect(inputElm.val()).toBe('a');
+      expect(scope.someService.getterSetter).toHaveBeenCalledWith();
+      expect(scope.someService.value).toBe('a');
+
+      changeInputValueTo('b');
+      expect(scope.someService.getterSetter).toHaveBeenCalledWith('b');
+      expect(scope.someService.value).toBe('b');
+
+      scope.someService.value = 'c';
+      scope.$apply();
+      expect(inputElm.val()).toBe('c');
+      expect(scope.someService.getterSetter).toHaveBeenCalledWith();
+    });
+
+    it('should invoke weird model expressions when getterSetter is true', function() {
+      compileInput(
+        '<input type="text" ng-model="(useA ? a : b)" ' +
+          'ng-model-options="{ getterSetter: true }" />');
+
+      scope.useA = true;
+      scope.a = jasmine.createSpy('aGetter');
+      scope.b = jasmine.createSpy('bGetter');
+
+      scope.$apply();
+      expect(scope.a).toHaveBeenCalled();
+      scope.$apply();
+      expect(scope.a).toHaveBeenCalled();
+      expect(scope.b).not.toHaveBeenCalled();
+
+      scope.useA = false;
+      scope.$apply();
+      expect(scope.b).toHaveBeenCalled();
+    });
+
     it('should assign invalid values to the scope if allowInvalid is true', function() {
       compileInput('<input type="text" name="input" ng-model="value" maxlength="1" ' +
                    'ng-model-options="{allowInvalid: true}" />');

@@ -1743,29 +1743,32 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
       pendingDebounce = null,
       ctrl = this;
 
-  var ngModelGet = function ngModelGet() {
-    var modelValue = parsedNgModel($scope);
-    if (ctrl.$options && ctrl.$options.getterSetter && isFunction(modelValue)) {
-      modelValue = modelValue();
-    }
-    return modelValue;
-  };
-
-  var ngModelSet = function ngModelSet(newValue) {
-    var getterSetter;
-    if (ctrl.$options && ctrl.$options.getterSetter &&
-        isFunction(getterSetter = parsedNgModel($scope))) {
-
-      getterSetter(ctrl.$modelValue);
-    } else {
-      parsedNgModel.assign($scope, ctrl.$modelValue);
-    }
-  };
+  var ngModelGet = parsedNgModel;
+  var ngModelSet = ngModelGet.assign;
 
   this.$$setOptions = function(options) {
     ctrl.$options = options;
 
-    if (!parsedNgModel.assign && (!options || !options.getterSetter)) {
+    if (options && options.getterSetter) {
+      var ngModelGetterGet = $parse($attr.ngModel + "()");
+      var ngModelGetterSet = $parse($attr.ngModel + "($$ngModelValue)");
+
+      //TODO: remove support for the ngModel being a non-function when getterSetter is enabled
+      ngModelGet = function ngModelGetterSetterGet($scope) {
+        var value = parsedNgModel($scope);
+        if (isFunction(value)) {
+          value = ngModelGetterGet($scope);
+        }
+        return value;
+      };
+      ngModelSet = function ngModelGetterSetterSet($scope, value) {
+        if (!parsedNgModel.assign || isFunction(parsedNgModel($scope))) {
+          ngModelGetterSet($scope, {$$ngModelValue: value});
+        } else {
+          parsedNgModel.assign($scope, value);
+        }
+      };
+    } else if (!ngModelSet) {
       throw $ngModelMinErr('nonassign', "Expression '{0}' is non-assignable. Element: {1}",
           $attr.ngModel, startingTag($element));
     }
@@ -2164,7 +2167,7 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
     }
     if (isNumber(ctrl.$modelValue) && isNaN(ctrl.$modelValue)) {
       // ctrl.$modelValue has not been touched yet...
-      ctrl.$modelValue = ngModelGet();
+      ctrl.$modelValue = ngModelGet($scope);
     }
     var prevModelValue = ctrl.$modelValue;
     var allowInvalid = ctrl.$options && ctrl.$options.allowInvalid;
@@ -2192,7 +2195,7 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
   };
 
   this.$$writeModelToScope = function() {
-    ngModelSet(ctrl.$modelValue);
+    ngModelSet($scope, ctrl.$modelValue);
     forEach(ctrl.$viewChangeListeners, function(listener) {
       try {
         listener();
@@ -2288,7 +2291,7 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
   //       ng-change executes in apply phase
   // 4. view should be changed back to 'a'
   $scope.$watch(function ngModelWatch() {
-    var modelValue = ngModelGet();
+    var modelValue = ngModelGet($scope);
 
     // if scope model value and ngModel value are out of sync
     // TODO(perf): why not move this to the action fn?
