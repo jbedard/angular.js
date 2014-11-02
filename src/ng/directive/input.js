@@ -1719,10 +1719,12 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
       pendingDebounce = null,
       ctrl = this;
 
+  var parsedNgModelContext = null;
+
   var ngModelGet = function ngModelGet() {
     var modelValue = parsedNgModel($scope);
     if (ctrl.$options && ctrl.$options.getterSetter && isFunction(modelValue)) {
-      modelValue = modelValue();
+      modelValue = modelValue.call(parsedNgModelContext ? parsedNgModelContext($scope) : $scope);
     }
     return modelValue;
   };
@@ -1732,7 +1734,7 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
     if (ctrl.$options && ctrl.$options.getterSetter &&
         isFunction(getterSetter = parsedNgModel($scope))) {
 
-      getterSetter(ctrl.$modelValue);
+      getterSetter.call(parsedNgModelContext ? parsedNgModelContext($scope) : $scope, ctrl.$modelValue);
     } else {
       parsedNgModel.assign($scope, ctrl.$modelValue);
     }
@@ -1741,7 +1743,12 @@ var NgModelController = ['$scope', '$exceptionHandler', '$attrs', '$element', '$
   this.$$setOptions = function(options) {
     ctrl.$options = options;
 
-    if (!parsedNgModel.assign && (!options || !options.getterSetter)) {
+    if (options && options.getterSetter) {
+      var ngModelContext = $attr.ngModel.match(/^(.+)\.[\w$]+$/);
+      if (ngModelContext) {
+        parsedNgModelContext = $parse(ngModelContext[1]);
+      }
+    } else if (!parsedNgModel.assign) {
       throw $ngModelMinErr('nonassign', "Expression '{0}' is non-assignable. Element: {1}",
           $attr.ngModel, startingTag($element));
     }
