@@ -202,7 +202,7 @@ function $InterpolateProvider() {
           }
           exp = text.substring(startIndex + startSymbolLength, endIndex);
           expressions.push(exp);
-          parseFns.push($parse(exp, parseStringifyInterceptor));
+          parseFns.push($parse(exp));
           index = endIndex + endSymbolLength;
           expressionPositions.push(concat.length);
           concat.push('');
@@ -232,7 +232,7 @@ function $InterpolateProvider() {
         var compute = function(values) {
           for (var i = 0, ii = expressions.length; i < ii; i++) {
             if (allOrNothing && isUndefined(values[i])) return;
-            concat[expressionPositions[i]] = values[i];
+            concat[expressionPositions[i]] = parseStringifyValue(values[i]);
           }
           return concat.join('');
         };
@@ -299,7 +299,7 @@ function $InterpolateProvider() {
           replace(escapedEndRegexp, endSymbol);
       }
 
-      function parseStringifyInterceptor(value) {
+      function parseStringifyValue(value) {
         try {
           return stringify(getValue(value));
         } catch (err) {
