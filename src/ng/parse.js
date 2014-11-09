@@ -1095,6 +1095,7 @@ function $ParseProvider() {
               //oneTime is not part of the exp passed to the Parser so we may have to
               //wrap the parsedExpression before adding a $$watchDelegate
               parsedExpression = wrapSharedExpression(parsedExpression);
+              parsedExpression.oneTime = true;
               parsedExpression.$$watchDelegate = parsedExpression.literal ?
                 oneTimeLiteralWatchDelegate : oneTimeWatchDelegate;
             } else if (parsedExpression.inputs) {
@@ -1254,13 +1255,19 @@ function $ParseProvider() {
     function addInterceptor(parsedExpression, interceptorFn) {
       if (!interceptorFn) return parsedExpression;
 
-      var fn = function interceptedExpression(scope, locals) {
-        var value = parsedExpression(scope, locals);
-        var result = interceptorFn(value, scope, locals);
-        // we only return the interceptor's result if the
-        // initial value is defined (for bind-once)
-        return isDefined(value) || interceptorFn.$stateful ? result : value;
-      };
+      var fn;
+      if (parsedExpression.oneTime) {
+        fn = function interceptedOneTimeExpression(scope, locals) {
+          var value = parsedExpression(scope, locals);
+          if (isDefined(value)) {
+            return interceptorFn(value, scope, locals);
+          }
+        };
+      } else {
+        fn = function interceptedExpression(scope, locals) {
+          return interceptorFn(parsedExpression(scope, locals), scope, locals);
+        };
+      }
 
       // Propagate $$watchDelegates other then inputsWatchDelegate
       if (parsedExpression.$$watchDelegate &&
