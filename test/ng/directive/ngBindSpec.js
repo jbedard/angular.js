@@ -129,6 +129,14 @@ describe('ngBind*', function() {
           "expecting [:] at column 3 of the expression [{{myHtml}}] starting at [myHtml}}].");
     }));
 
+    it('should allow bind-once', inject(function($rootScope, $compile, $sce) {
+      element = $compile('<div ng-bind-html="::html"></div>')($rootScope);
+      $rootScope.$digest();
+      expect(element.text()).toBe('');
+      $rootScope.html = $sce.trustAsHtml('<div>foo</div>');
+      $rootScope.$digest();
+      expect(element.text()).toBe('foo');
+    }));
 
     describe('SCE disabled', function() {
       beforeEach(function() {
