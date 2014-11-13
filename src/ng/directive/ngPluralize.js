@@ -198,20 +198,22 @@ var ngPluralizeDirective = ['$locale', '$interpolate', function($locale, $interp
             offset + endSymbol));
       });
 
-      scope.$watch(function ngPluralizeWatch() {
-        var value = parseFloat(scope.$eval(numberExp));
+      var currentWatchRemover = angular.noop;;
+      scope.$watch(numberExp, function(value) {
+        currentWatchRemover();
+        currentWatchRemover = angular.noop;
 
-        if (!isNaN(value)) {
+        if (!isNaN(value = parseFloat(value))) {
           //if explicit number rule such as 1, 2, 3... is defined, just use it. Otherwise,
           //check it against pluralization rules in $locale service
           if (!(value in whens)) value = $locale.pluralCat(value - offset);
-           return whensExpFns[value](scope);
-        } else {
-          return '';
+          currentWatchRemover = scope.$watch(whensExpFns[value], updateText);
         }
-      }, function ngPluralizeWatchAction(newVal) {
-        element.text(newVal);
       });
+
+      function updateText(value) {
+        element.text(value || '');
+      }
     }
   };
 }];
