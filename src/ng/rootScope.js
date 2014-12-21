@@ -83,6 +83,114 @@ function $RootScopeProvider() {
   this.$get = ['$injector', '$exceptionHandler', '$parse', '$browser',
       function($injector, $exceptionHandler, $parse, $browser) {
 
+    function isAllDefined(value) {
+      var allDefined = true;
+      forEach(value, function(val) {
+        if (!isDefined(val)) allDefined = false;
+      });
+      return allDefined;
+    }
+
+    var objectValueOf = Object.prototype.valueOf;
+
+    function getValueOf(value) {
+      return isFunction(value.valueOf) ? value.valueOf() : objectValueOf.call(value);
+    }
+
+    function expressionInputDirtyCheck(newValue, oldValueOfValue) {
+
+      if (newValue == null || oldValueOfValue == null) { // null/undefined
+        return newValue === oldValueOfValue;
+      }
+
+      if (typeof newValue === 'object') {
+
+        // attempt to convert the value to a primitive type
+        // TODO(docs): add a note to docs that by implementing valueOf even objects and arrays can
+        //             be cheaply dirty-checked
+        newValue = getValueOf(newValue);
+
+        if (typeof newValue === 'object') {
+          // objects/arrays are not supported - deep-watching them would be too expensive
+          return false;
+        }
+
+        // fall-through to the primitive equality check
+      }
+
+      //Primitive or NaN
+      return newValue === oldValueOfValue || (newValue !== newValue && oldValueOfValue !== oldValueOfValue);
+    }
+
+    function inputsWatcher(parsedExpression) {
+      var inputExpressions = parsedExpression.$$watchInputs ||
+          (parsedExpression.$$watchInputs = collectExpressionInputs(parsedExpression.inputs));
+
+      var lastResult;
+      var watcher;
+
+      if (inputExpressions.length === 1) {
+        var oldInputValue = expressionInputDirtyCheck; // init to something unique so that equals check fails
+        inputExpressions = inputExpressions[0];
+        watcher = function expressionInputWatch(scope) {
+          var newInputValue = inputExpressions(scope);
+          if (!expressionInputDirtyCheck(newInputValue, oldInputValue)) {
+            lastResult = parsedExpression(scope);
+            oldInputValue = newInputValue && getValueOf(newInputValue);
+          }
+          return lastResult;
+        };
+      } else {
+        var oldInputValueOfValues = [];
+        for (var i = 0, ii = inputExpressions.length; i < ii; i++) {
+          oldInputValueOfValues[i] = expressionInputDirtyCheck; // init to something unique so that equals check fails
+        }
+
+        watcher = function expressionInputsWatch(scope) {
+          var changed = false;
+
+          for (var i = 0, ii = inputExpressions.length; i < ii; i++) {
+            var newInputValue = inputExpressions[i](scope);
+            if (changed || (changed = !expressionInputDirtyCheck(newInputValue, oldInputValueOfValues[i]))) {
+              oldInputValueOfValues[i] = newInputValue && getValueOf(newInputValue);
+            }
+          }
+
+          if (changed) {
+            lastResult = parsedExpression(scope);
+          }
+
+          return lastResult;
+        };
+      }
+
+      watcher.constant = parsedExpression.constant;
+      watcher.literal = parsedExpression.literal;
+      watcher.oneTime = parsedExpression.oneTime;
+      watcher.inputs = parsedExpression.inputs;
+
+      return watcher;
+    }
+
+    function collectExpressionInputs(inputs, list) {
+      while (inputs.length === 1 && inputs[0].inputs) {
+        inputs = inputs[0].inputs;
+      }
+
+      for (var i = 0, ii = inputs.length; i < ii; i++) {
+        var input = inputs[i];
+        if (!input.constant) {
+          if (input.inputs) {
+            list = collectExpressionInputs(input.inputs, list || []);
+          } else if (!list || list.indexOf(input) === -1) { // TODO(perf) can we do better?
+            (list || (list = [])).push(input);
+          }
+        }
+      }
+
+      return list;
+    }
+
     /**
      * @ngdoc type
      * @name $rootScope.Scope
@@ -359,36 +467,71 @@ function $RootScopeProvider() {
       $watch: function(watchExp, listener, objectEquality) {
         var get = $parse(watchExp);
 
-        if (get.$$watchDelegate) {
-          return get.$$watchDelegate(this, listener, objectEquality, get);
-        }
-        var scope = this,
-            array = scope.$$watchers,
-            watcher = {
-              fn: listener,
-              last: initWatchVal,
-              get: get,
-              exp: watchExp,
-              eq: !!objectEquality
-            };
-
-        lastDirtyWatch = null;
-
         if (!isFunction(listener)) {
-          watcher.fn = noop;
+          listener = noop;
         }
 
-        if (!array) {
-          array = scope.$$watchers = [];
+        //If the expression processes the inputs then use $watchGroup on the inputs
+        if (get.compute) {
+          var oldWatchInputsValue;
+          return this.$watchGroup(get.inputs, function watchComputeInputs(values, oldValues, scope) {
+            var newWatchInputsValue = get.compute(values);
+            if (values === oldValues || oldWatchInputsValue !== newWatchInputsValue) {
+              listener.call(this, newWatchInputsValue, values === oldValues ? newWatchInputsValue : oldWatchInputsValue, scope);
+              oldWatchInputsValue = newWatchInputsValue;
+            }
+          });
         }
+
+        var array = this.$$watchers || (this.$$watchers = []);
+        var watcher = {
+          fn: listener,
+          last: initWatchVal,
+          get: get,
+          exp: watchExp,
+          eq: !!objectEquality
+        };
+
+        function deregisterWatch() {
+          arrayRemove(array, watcher);
+          lastDirtyWatch = null;
+        }
+
+        //Constant expressions get removed on first call
+        if (get.constant) {
+          watcher.fn = function constantListener() {
+            listener.apply(this, arguments);
+            deregisterWatch();
+          };
+        //One-time expressions get removed after the first defined-value call
+        } else if (get.oneTime) {
+          var lastValue;
+          watcher.fn = function oneTimeListener(value, oldValue, scope) {
+            listener.apply(this, arguments);
+
+            //TODO(perf): only register one $$postDigest?
+            lastValue = value;
+            if (get.literal ? isAllDefined(value) : isDefined(value)) {
+              scope.$$postDigest(function() {
+                if (get.literal ? isAllDefined(lastValue) : isDefined(lastValue)) {
+                  deregisterWatch();
+                }
+              });
+            }
+          };
+        //Pure functions which don't change unless the input changes can (possibly)
+        //use a simplified getter.
+        } else if (get.inputs) {
+          watcher.get = inputsWatcher(get);
+        }
+
         // we use unshift since we use a while loop in $digest for speed.
         // the while loop reads in reverse order.
         array.unshift(watcher);
 
-        return function deregisterWatch() {
-          arrayRemove(array, watcher);
-          lastDirtyWatch = null;
-        };
+        lastDirtyWatch = null;
+
+        return deregisterWatch;
       },
 
       /**

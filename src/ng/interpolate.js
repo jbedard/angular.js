@@ -281,16 +281,9 @@ function $InterpolateProvider() {
           // all of these properties are undocumented for now
           exp: text, //just for compatibility with regular watchers created via $watch
           expressions: expressions,
-          $$watchDelegate: function(scope, listener, objectEquality) {
-            var lastValue;
-            return scope.$watchGroup(parseFns, function interpolateFnWatcher(values, oldValues) {
-              var currValue = compute(values);
-              if (isFunction(listener)) {
-                listener.call(this, currValue, values !== oldValues ? lastValue : currValue, scope);
-              }
-              lastValue = currValue;
-            }, objectEquality);
-          }
+          constant: parseFns.every(function(e) { return e.constant; }),
+          inputs: parseFns,
+          compute: compute
         });
       }
 
