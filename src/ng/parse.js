@@ -873,7 +873,7 @@ ASTCompiler.prototype = {
       break;
     case AST.LogicalExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
+      this.unless(isDefined(ast.watchId) ? 'i' : false, function() {
         self.recurse(ast.left, intoId);
         self.if(ast.operator === '&&' ? intoId : self.not(intoId), self.lazyRecurse(ast.right, intoId));
         recursionFn(intoId);
@@ -884,7 +884,7 @@ ASTCompiler.prototype = {
       break;
     case AST.ConditionalExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
+      this.unless(isDefined(ast.watchId) ? 'i' : false, function() {
         self.recurse(ast.test, intoId);
         self.if(intoId, self.lazyRecurse(ast.alternate, intoId), self.lazyRecurse(ast.consequent, intoId));
         recursionFn(intoId);
@@ -900,9 +900,9 @@ ASTCompiler.prototype = {
         nameId.computed = false;
         nameId.name = ast.name;
       }
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
+      this.unless(isDefined(ast.watchId) ? 'i' : false, function() {
         ensureSafeMemberName(ast.name);
-        self.if(self.stage === 'inputs' || self.not(self.getHasOwnProperty('l', ast.name)),
+        self.unless(self.stage !== 'inputs' && self.getHasOwnProperty('l', ast.name),
           function() {
             self.if('s', function() {
               if (create && create !== 1) {
@@ -926,7 +926,7 @@ ASTCompiler.prototype = {
     case AST.MemberExpression:
       left = nameId && (nameId.context = this.nextId()) || this.nextId();
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
+      this.unless(isDefined(ast.watchId) ? 'i' : false, function() {
         self.recurse(ast.object, left, undefined, function() {
           self.if(self.notNull(left), function() {
             if (ast.computed) {
@@ -967,7 +967,7 @@ ASTCompiler.prototype = {
       break;
     case AST.CallExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
+      this.unless(isDefined(ast.watchId) ? 'i' : false, function() {
         if (ast.filter) {
           right = self.filter(ast.callee.name);
           args = [];
@@ -1107,6 +1107,8 @@ ASTCompiler.prototype = {
   'if': function(test, alternate, consequent) {
     if (test === true) {
       alternate();
+    } else if (test === false) {
+      consequent();
     } else {
       var body = this.current().body;
       body.push('if(', test, '){');
@@ -1118,6 +1120,9 @@ ASTCompiler.prototype = {
         body.push('}');
       }
     }
+  },
+  unless: function(test, alternate, consequent) {
+    return consequent ? this.if(test, consequent, alternate) : this.if(this.not(test), alternate);
   },
 
   not: function(expression) {
