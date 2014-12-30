@@ -904,7 +904,7 @@ ASTCompiler.prototype = {
         ensureSafeMemberName(ast.name);
         self.unless(self.stage !== 'inputs' && self.getHasOwnProperty('l', ast.name),
           function() {
-            self.if('s', function() {
+            self.if(self.stage === 'inputs' || 's', function() {
               if (create && create !== 1) {
                 self.if(
                   self.not(self.getHasOwnProperty('s', ast.name)),
