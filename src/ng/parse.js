@@ -726,6 +726,7 @@ ASTCompiler.prototype = {
       findConstantAndWatchExpressions(ast.body[i].expression, this.$filter);
     }
     var toWatch = useInputs(ast.body) ? ast.body[ast.body.length - 1].expression.toWatch : [];
+    self.stage = 'inputs';
     forEach(toWatch, function(watch, key) {
       var fnKey = 'fn' + key;
       self.state[fnKey] = {vars: [], body: [], own: {}};
@@ -736,6 +737,7 @@ ASTCompiler.prototype = {
       self.state.inputs.push(fnKey);
       watch.watchId = key;
     });
+    self.stage = 'main';
     this.state.computing = 'fn';
     for (i = 0; i < ast.body.length; ++i) {
       if (lastExpression) this.current().body.push(lastExpression, ';');
@@ -744,6 +746,7 @@ ASTCompiler.prototype = {
     if (lastExpression) this.return(lastExpression);
     var extra = '';
     if (ast.body.length === 1 && isAssignable(ast.body[0].expression)) {
+      self.stage = 'assign';
       this.state.computing = 'assign';
       var result = this.nextId();
       this.recurse({type: AST.AssignmentExpression, left: ast.body[0].expression, right: {type: AST.NGValueParameter}, operator: '='}, result);
@@ -794,7 +797,7 @@ ASTCompiler.prototype = {
           isLiteral,
           isConstant);
     /* jshint +W054 */
-    this.state = undefined;
+    this.state = this.stage = undefined;
     return fn;
   },
 
@@ -808,7 +811,7 @@ ASTCompiler.prototype = {
     var self = this;
     forEach(fns, function(name) {
       result.push(
-        'var ' + name + ' = function(s,l){' +
+        'var ' + name + ' = function(s){' +
         self.varsPrefix(name) +
         self.body(name) +
         '};');
@@ -893,13 +896,13 @@ ASTCompiler.prototype = {
     case AST.Identifier:
       intoId = intoId || this.nextId();
       if (nameId) {
-        nameId.context = this.assign(this.nextId(), this.getHasOwnProperty('l', ast.name), '?l:s');
+        nameId.context = self.stage === 'inputs' ? 's' : this.assign(this.nextId(), this.getHasOwnProperty('l', ast.name), '?l:s');
         nameId.computed = false;
         nameId.name = ast.name;
       }
       this.if(isDefined(ast.watchId) ? '!i' : true, function() {
         ensureSafeMemberName(ast.name);
-        self.if(self.not(self.getHasOwnProperty('l', ast.name)),
+        self.if(self.stage === 'inputs' || self.not(self.getHasOwnProperty('l', ast.name)),
           function() {
             self.if('s', function() {
               if (create && create !== 1) {
