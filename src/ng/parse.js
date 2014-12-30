@@ -597,111 +597,103 @@ function plusFn(l, r) {
   return l + r;
 }
 
-function isStateless($filter, filterName) {
-  var fn = $filter(filterName);
-  return !fn.$stateful;
-}
-
-function findConstantAndWatchExpressions(ast, $filter) {
-  var allConstants;
-  var argsToWatch;
-  switch (ast.type) {
-  case AST.Literal:
-    ast.constant = true;
-    ast.toWatch = [];
-    break;
-  case AST.UnaryExpression:
-    findConstantAndWatchExpressions(ast.argument, $filter);
-    ast.constant = ast.argument.constant;
-    ast.toWatch = ast.argument.toWatch;
-    break;
-  case AST.BinaryExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = ast.left.toWatch.concat(ast.right.toWatch);
-    break;
-  case AST.LogicalExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = ast.constant ? [] : [ast];
-    break;
-  case AST.ConditionalExpression:
-    findConstantAndWatchExpressions(ast.test, $filter);
-    findConstantAndWatchExpressions(ast.alternate, $filter);
-    findConstantAndWatchExpressions(ast.consequent, $filter);
-    ast.constant = ast.test.constant && ast.alternate.constant && ast.consequent.constant;
-    ast.toWatch = ast.constant ? [] : [ast];
-    break;
-  case AST.Identifier:
-    ast.constant = false;
-    ast.toWatch = [ast];
-    break;
-  case AST.MemberExpression:
-    findConstantAndWatchExpressions(ast.object, $filter);
-    if (ast.computed) {
-      findConstantAndWatchExpressions(ast.property, $filter);
+function traverse(ast, visitor) {
+  if (false !== visitor(ast)) {
+    switch (ast.type) {
+      case AST.UnaryExpression:
+        traverse(ast.argument, visitor);
+        break;
+      case AST.ExpressionStatement:
+        traverse(ast.expression, visitor);
+        break;
+      case AST.BinaryExpression:
+      case AST.LogicalExpression:
+      case AST.AssignmentExpression:
+        traverse(ast.left, visitor);
+        traverse(ast.right, visitor);
+        break;
+      case AST.ConditionalExpression:
+        traverse(ast.test, visitor);
+        traverse(ast.alternate, visitor);
+        traverse(ast.consequent, visitor);
+        break;
+      case AST.MemberExpression:
+        traverse(ast.object, visitor);
+        traverse(ast.property, visitor);
+        break;
+      case AST.CallExpression:
+        if (!ast.filter) {
+          traverse(ast.callee, visitor);
+        }
+        /* jshint -W086 */
+        //fall through to the overly complicated child exp loop
+      case AST.Program:
+      case AST.ArrayExpression:
+      case AST.ObjectExpression:
+        for (var a = ast.arguments || ast.body || ast.elements || ast.properties, i = 0, ii = a.length; i < ii; i++) {
+          traverse(a[i].value || a[i].expression || a[i], visitor);
+        }
+        break;
     }
-    ast.constant = ast.object.constant && (!ast.computed || ast.property.constant);
-    ast.toWatch = [ast];
-    break;
-  case AST.CallExpression:
-    allConstants = ast.filter ? isStateless($filter, ast.callee.name) : false;
-    argsToWatch = [];
-    forEach(ast.arguments, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
-      allConstants = allConstants && expr.constant;
-      argsToWatch.push.apply(argsToWatch, expr.toWatch);
-    });
-    ast.constant = allConstants;
-    ast.toWatch = ast.filter && isStateless($filter, ast.callee.name) ? argsToWatch : [ast];
-    break;
-  case AST.AssignmentExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = ast.right.toWatch;
-    break;
-  case AST.ArrayExpression:
-    allConstants = true;
-    argsToWatch = [];
-    forEach(ast.elements, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
-      allConstants = allConstants && expr.constant;
-      argsToWatch.push.apply(argsToWatch, expr.toWatch);
-    });
-    ast.constant = allConstants;
-    ast.toWatch = argsToWatch;
-    break;
-  case AST.ObjectExpression:
-    allConstants = true;
-    argsToWatch = [];
-    forEach(ast.properties, function(property) {
-      findConstantAndWatchExpressions(property.value, $filter);
-      allConstants = allConstants && property.value.constant;
-      argsToWatch.push.apply(argsToWatch, property.value.toWatch);
-    });
-    ast.constant = allConstants;
-    ast.toWatch = argsToWatch;
-    break;
-  case AST.ThisExpression:
-    ast.constant = false;
-    ast.toWatch = [];
-    break;
   }
 }
 
-function useInputs(body) {
-  if (!body.length) return false;
-  var lastExpression = body[body.length - 1];
-  if (lastExpression.expression.toWatch.length !== 1) return true;
-  return lastExpression.expression.toWatch[0] !== lastExpression.expression;
+function astAny(ast, check) {
+  var res = false;
+  traverse(ast, function(e) {
+    res = res || check(e);
+    return !res;
+  });
+  return res;
+}
+function isConstant(ast, $filter) {
+  return !astAny(ast, function(e) { return isMutator(e) || isStateful(e, $filter); });
+}
+function hasMutator(ast) {
+  return astAny(ast, isMutator);
+}
+function findInputs(ast, $filter) {
+  //Recurse into the body if htere is only one for the check in the return condition
+  if (ast.body && ast.body.length === 1) {
+    ast = ast.body[0].expression;
+  }
+
+  var inputs = [];
+  traverse(ast, function(e) {
+    if (isStateful(e, $filter) || isBranching(e) && hasMutator(e)) {
+      if (!isConstant(e, $filter)) {
+        inputs.push(e);
+      }
+      return false;
+    }
+  });
+
+  //Only return non-empty and non-equevelent inputs
+  return inputs.length && !(inputs.length === 1 && inputs[0] === ast) ? inputs : false;
 }
 
 function isAssignable(ast) {
   return ast.type === AST.Identifier || ast.type === AST.MemberExpression;
 }
+function isMutator(ast) {
+  return ast.type === AST.AssignmentExpression ||
+         ast.type === AST.CallExpression && !ast.filter;
+}
+function isBranching(ast) {
+  return ast.type === AST.ConditionalExpression || ast.type === AST.LogicalExpression;
+}
+function isStateful(ast, $filter) {
+  return ast.type === AST.Identifier ||
+         ast.type === AST.MemberExpression ||
+         ast.type === AST.CallExpression && (!ast.filter || $filter(ast.callee.name).$stateful);
+}
+function isLiteral(ast) {
+  if (ast.body && ast.body.length === 1) {
+    ast = ast.body[0].expression;
+  }
+  return ast.type === AST.Literal || ast.type === AST.ArrayExpression || ast.type === AST.ObjectExpression;
+}
+
 
 function ASTCompiler(astBuilder, $filter) {
   this.astBuilder = astBuilder;
@@ -720,13 +712,7 @@ ASTCompiler.prototype = {
       assign: {vars: [], body: [], own: {}},
       inputs: []
     };
-    var lastExpression;
-    var i;
-    for (i = 0; i < ast.body.length; ++i) {
-      findConstantAndWatchExpressions(ast.body[i].expression, this.$filter);
-    }
-    var toWatch = useInputs(ast.body) ? ast.body[ast.body.length - 1].expression.toWatch : [];
-    forEach(toWatch, function(watch, key) {
+    forEach(findInputs(ast, this.$filter) || [], function(watch, key) {
       var fnKey = 'fn' + key;
       self.state[fnKey] = {vars: [], body: [], own: {}};
       self.state.computing = fnKey;
@@ -737,7 +723,8 @@ ASTCompiler.prototype = {
       watch.watchId = key;
     });
     this.state.computing = 'fn';
-    for (i = 0; i < ast.body.length; ++i) {
+    var lastExpression;
+    for (var i = 0; i < ast.body.length; ++i) {
       if (lastExpression) this.current().body.push(lastExpression, ';');
       this.recurse(ast.body[i].expression, undefined, undefined, function(expr) { lastExpression = expr; });
     }
@@ -747,7 +734,7 @@ ASTCompiler.prototype = {
       this.state.computing = 'assign';
       var result = this.nextId();
       this.recurse({type: AST.AssignmentExpression, left: ast.body[0].expression, right: {type: AST.NGValueParameter}, operator: '='}, result);
-      extra = 'fn.assign=function(s,v,l){' +
+      extra = 'fn.assign=function(s,v,l,i){' +
         this.varsPrefix('assign') +
         this.body('assign') +
         '};';
@@ -763,14 +750,8 @@ ASTCompiler.prototype = {
       '};' +
       extra +
       this.watchFns() +
-      'fn.literal=literal;fn.constant=constant;' +
       'return fn;';
 
-    var isLiteral = ast.body.length === 1 && (
-          ast.body[0].expression.type === AST.Literal ||
-          ast.body[0].expression.type === AST.ArrayExpression ||
-          ast.body[0].expression.type === AST.ObjectExpression);
-    var isConstant = ast.body.length === 1 && ast.body[0].expression.constant;
     /* jshint -W054 */
     var fn = (new Function('$filter',
         'ensureSafeMemberName',
@@ -780,8 +761,6 @@ ASTCompiler.prototype = {
         'ifDefined',
         'plus',
         'text',
-        'literal',
-        'constant',
         fnString))(
           this.$filter,
           ensureSafeMemberName,
@@ -790,9 +769,9 @@ ASTCompiler.prototype = {
           isPossiblyDangerousMemberName,
           ifDefined,
           plusFn,
-          expression,
-          isLiteral,
-          isConstant);
+          expression);
+    fn.constant = isConstant(ast, this.$filter);
+    fn.literal = isLiteral(ast);
     /* jshint +W054 */
     this.state = undefined;
     return fn;
@@ -1219,9 +1198,6 @@ ASTInterpreter.prototype = {
     var ast = this.astBuilder.ast(expression);
     this.expression = expression;
     this.expensiveChecks = expensiveChecks;
-    forEach(ast.body, function(expression) {
-      findConstantAndWatchExpressions(expression.expression, self.$filter);
-    });
     var expressions = [];
     forEach(ast.body, function(expression) {
       expressions.push(self.recurse(expression.expression));
@@ -1235,25 +1211,18 @@ ASTInterpreter.prototype = {
                });
                return lastValue;
              };
-    var toWatch = useInputs(ast.body) ? ast.body[ast.body.length - 1].expression.toWatch : [];
-    if (toWatch.length) {
-      var inputs = [];
-      forEach(toWatch, function(watch, key) {
-        inputs.push(self.recurse(watch));
-      });
-      fn.inputs = inputs;
-    }
     if (ast.body.length === 1 && isAssignable(ast.body[0].expression)) {
       var assign = this.recurse({type: AST.AssignmentExpression, left: ast.body[0].expression, right: {type: AST.NGValueParameter}, operator: '='});
       fn.assign = function(scope, value, locals) {
         return assign(scope, locals, value);
       };
     }
-    fn.literal = ast.body.length === 1 && (
-          ast.body[0].expression.type === AST.Literal ||
-          ast.body[0].expression.type === AST.ArrayExpression ||
-          ast.body[0].expression.type === AST.ObjectExpression);
-    fn.constant = ast.body.length === 1 && ast.body[0].expression.constant;
+    fn.literal = isLiteral(ast);
+    fn.constant = isConstant(ast, this.$filter);
+    fn.inputs = findInputs(ast, this.$filter);
+    if (fn.inputs) {
+      fn.inputs = fn.inputs.map(function(input) { return self.recurse(input); });
+    }
     return fn;
   },
 
