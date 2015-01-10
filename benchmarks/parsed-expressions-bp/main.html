@@ -153,7 +153,7 @@
           <span bm-pe-watch="rowIdx % 2 === 1"></span>
           <span bm-pe-watch="rowIdx % 2 === 0"></span>
           <span bm-pe-watch="rowIdx / 1"></span>
-          <span bm-pe-watch="-rowIdx * 2 * rowIdx + rowIdx / rowIdx + 1"></span>
+          <span bm-pe-watch="-rowIdx * 2 * row.index + row.num0 / row.num1 + 1"></span>
         </li>
 
         <li ng-switch-when="shortCircuitingOperators" ng-repeat="(rowIdx, row) in ::data">
@@ -162,9 +162,9 @@
           <span bm-pe-watch="row.odd && !row.even"></span>
           <span bm-pe-watch="row.odd || row.even"></span>
           <span bm-pe-watch="row.odd || row.even || row.index"></span>
-          <span bm-pe-watch="row.index === 1 || row.index === 2"></span>
-          <span bm-pe-watch="row.num0 < row.num1 && row.num1 < row.num2"></span>
-          <span bm-pe-watch="row.num0 < row.num1 || row.num1 < row.num2"></span>
+          <span bm-pe-watch="row.index === 1 || row.obj.index === 2"></span>
+          <span bm-pe-watch="row.num0 < row.num1 && row.index < row.num2"></span>
+          <span bm-pe-watch="row.num0 < row.num1 || row.index < row.num2"></span>
         </li>
 
         <li ng-switch-when="filters" ng-repeat="(rowIdx, row) in ::data">
@@ -199,11 +199,11 @@
 
         <li ng-switch-when="objectLiterals" ng-repeat="(rowIdx, row) in ::data">
           <span bm-pe-watch-literal="{foo: rowIdx}"></span>
-          <span bm-pe-watch-literal="{foo: row, bar: rowIdx}"></span>
-          <span bm-pe-watch-literal="{0: row, 1: rowIdx, 2: 3}"></span>
+          <span bm-pe-watch-literal="{foo: row.index, bar: rowIdx}"></span>
+          <span bm-pe-watch-literal="{0: row.index, 1: rowIdx, 2: 3}"></span>
           <span bm-pe-watch-literal="{str: 'foo', num: rowIdx, b: true}"></span>
           <span bm-pe-watch-literal="{a: {b: {c: {d: {e: {f: rowIdx}}}}}}"></span>
-          <span bm-pe-watch-literal="{a: rowIdx, b: 1, c: 2, d: 3, e: 4, f: 5, g: rowIdx, h: 6, i: 7, j: 8, k: rowIdx}"></span>
+          <span bm-pe-watch-literal="{a: rowIdx, b: 1, c: 2, d: 3, e: 4, f: 5, g: row.index, h: 6, i: 7, j: 8, k: row.num1}"></span>
         </li>
 
         <li ng-switch-when="arrayLiterals" ng-repeat="(rowIdx, row) in ::data">
