@@ -2981,7 +2981,10 @@ describe('parser', function() {
             called = true;
             return v;
           }
-          scope.$watch($parse("a", interceptor));
+          //TODO: would be nice if the full interceptor-wrapped function was treated as input to the interceptor
+          //but currently the inputs are computed before interceptor-wrapping is done so this is not possible
+          //scope.$watch($parse("a", interceptor));
+          scope.$watch($parse("a + b", interceptor));
           scope.a = scope.b = 0;
           scope.$digest();
           expect(called).toBe(true);
