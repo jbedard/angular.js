@@ -858,6 +858,20 @@ ASTCompiler.prototype = {
   recurse: function(ast, intoId, nameId, recursionFn, create) {
     var left, right, self = this, args, expression;
     recursionFn = recursionFn || noop;
+
+    if (ast.hasOwnProperty("watchId")) {
+      var watchId = ast.watchId;
+      delete ast.watchId;
+
+      intoId = intoId || this.nextId();
+      this.if('i',
+        this.lazyAssign(intoId, this.computedMember('i', watchId)),
+        this.lazyRecurse(ast, intoId, nameId, undefined, create)
+      );
+      recursionFn(intoId);
+      return;
+    }
+
     switch (ast.type) {
     case AST.Program:
       forEach(ast.body, function(expression, pos) {
@@ -895,23 +909,15 @@ ASTCompiler.prototype = {
       break;
     case AST.LogicalExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
-        self.recurse(ast.left, intoId);
-        self.if(ast.operator === '&&' ? intoId : self.not(intoId), self.lazyRecurse(ast.right, intoId));
-        recursionFn(intoId);
-      }, function() {
-        self.assign(intoId, self.computedMember('i', ast.watchId));
-      });
+      self.recurse(ast.left, intoId);
+      self.if(ast.operator === '&&' ? intoId : self.not(intoId), self.lazyRecurse(ast.right, intoId));
+      recursionFn(intoId);
       break;
     case AST.ConditionalExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
-        self.recurse(ast.test, intoId);
-        self.if(intoId, self.lazyRecurse(ast.alternate, intoId), self.lazyRecurse(ast.consequent, intoId));
-        recursionFn(intoId);
-      }, function() {
-        self.assign(intoId, self.computedMember('i', ast.watchId));
-      });
+      self.recurse(ast.test, intoId);
+      self.if(intoId, self.lazyRecurse(ast.alternate, intoId), self.lazyRecurse(ast.consequent, intoId));
+      recursionFn(intoId);
       break;
     case AST.Identifier:
       intoId = intoId || this.nextId();
@@ -920,112 +926,100 @@ ASTCompiler.prototype = {
         nameId.computed = false;
         nameId.name = ast.name;
       }
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
-        ensureSafeMemberName(ast.name);
-        self.if(self.stage === 'inputs' || self.not(self.getHasOwnProperty('l', ast.name)),
-          function() {
-            self.if(self.stage === 'inputs' || 's', function() {
-              if (create && create !== 1) {
-                self.if(
-                  self.not(self.getHasOwnProperty('s', ast.name)),
-                  self.lazyAssign(self.nonComputedMember('s', ast.name), '{}'));
-              }
-              self.assign(intoId, self.nonComputedMember('s', ast.name));
-            });
-          }, intoId && self.lazyAssign(intoId, self.nonComputedMember('l', ast.name))
-          );
-        if (self.state.expensiveChecks || isPossiblyDangerousMemberName(ast.name)) {
-          self.addEnsureSafeObject(intoId);
-        }
-        recursionFn(intoId);
-      }, function() {
-        self.assign(intoId, self.computedMember('i', ast.watchId));
-      });
+      ensureSafeMemberName(ast.name);
+      self.if(self.stage === 'inputs' || self.not(self.getHasOwnProperty('l', ast.name)),
+        function() {
+          self.if(self.stage === 'inputs' || 's', function() {
+            if (create && create !== 1) {
+              self.if(
+                self.not(self.getHasOwnProperty('s', ast.name)),
+                self.lazyAssign(self.nonComputedMember('s', ast.name), '{}'));
+            }
+            self.assign(intoId, self.nonComputedMember('s', ast.name));
+          });
+        }, intoId && self.lazyAssign(intoId, self.nonComputedMember('l', ast.name))
+        );
+      if (self.state.expensiveChecks || isPossiblyDangerousMemberName(ast.name)) {
+        self.addEnsureSafeObject(intoId);
+      }
+      recursionFn(intoId);
       break;
     case AST.MemberExpression:
       left = nameId && (nameId.context = this.nextId()) || this.nextId();
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
-        self.recurse(ast.object, left, undefined, function() {
-          self.if(self.notNull(left), function() {
-            if (ast.computed) {
-              right = self.nextId();
-              self.recurse(ast.property, right);
-              self.addEnsureSafeMemberName(right);
-              if (create && create !== 1) {
-                self.if(self.not(right + ' in ' + left), self.lazyAssign(self.computedMember(left, right), '{}'));
-              }
-              expression = self.ensureSafeObject(self.computedMember(left, right));
-              self.assign(intoId, expression);
-              if (nameId) {
-                nameId.computed = true;
-                nameId.name = right;
-              }
-            } else {
-              ensureSafeMemberName(ast.property.name);
-              if (create && create !== 1) {
-                self.if(self.not(self.escape(ast.property.name) + ' in ' + left), self.lazyAssign(self.nonComputedMember(left, ast.property.name), '{}'));
-              }
-              expression = self.nonComputedMember(left, ast.property.name);
-              if (self.state.expensiveChecks || isPossiblyDangerousMemberName(ast.property.name)) {
-                expression = self.ensureSafeObject(expression);
-              }
-              self.assign(intoId, expression);
-              if (nameId) {
-                nameId.computed = false;
-                nameId.name = ast.property.name;
-              }
+      self.recurse(ast.object, left, undefined, function() {
+        self.if(self.notNull(left), function() {
+          if (ast.computed) {
+            right = self.nextId();
+            self.recurse(ast.property, right);
+            self.addEnsureSafeMemberName(right);
+            if (create && create !== 1) {
+              self.if(self.not(right + ' in ' + left), self.lazyAssign(self.computedMember(left, right), '{}'));
             }
-            recursionFn(intoId);
-          });
-        }, !!create);
-      }, function() {
-        self.assign(intoId, self.computedMember('i', ast.watchId));
-      });
+            expression = self.ensureSafeObject(self.computedMember(left, right));
+            self.assign(intoId, expression);
+            if (nameId) {
+              nameId.computed = true;
+              nameId.name = right;
+            }
+          } else {
+            ensureSafeMemberName(ast.property.name);
+            if (create && create !== 1) {
+              self.if(self.not(self.escape(ast.property.name) + ' in ' + left), self.lazyAssign(self.nonComputedMember(left, ast.property.name), '{}'));
+            }
+            expression = self.nonComputedMember(left, ast.property.name);
+            if (self.state.expensiveChecks || isPossiblyDangerousMemberName(ast.property.name)) {
+              expression = self.ensureSafeObject(expression);
+            }
+            self.assign(intoId, expression);
+            if (nameId) {
+              nameId.computed = false;
+              nameId.name = ast.property.name;
+            }
+          }
+          recursionFn(intoId);
+        });
+      }, !!create);
       break;
     case AST.CallExpression:
       intoId = intoId || this.nextId();
-      this.if(isDefined(ast.watchId) ? '!i' : true, function() {
-        if (ast.filter) {
-          right = self.filter(ast.callee.name);
-          args = [];
-          forEach(ast.arguments, function(expr) {
-            var argument = self.nextId();
-            self.recurse(expr, argument);
-            args.push(argument);
-          });
-          expression = right + '(' + args.join(',') + ')';
-          self.assign(intoId, expression);
-          recursionFn(intoId);
-        } else {
-          right = self.nextId();
-          left = {};
-          args = [];
-          self.recurse(ast.callee, right, left, function() {
-            self.if(self.notNull(right), function() {
-              self.addEnsureSafeFunction(right);
-              forEach(ast.arguments, function(expr) {
-                self.recurse(expr, undefined, undefined, function(argument) {
-                  args.push(self.ensureSafeObject(argument));
-                });
+      if (ast.filter) {
+        right = self.filter(ast.callee.name);
+        args = [];
+        forEach(ast.arguments, function(expr) {
+          var argument = self.nextId();
+          self.recurse(expr, argument);
+          args.push(argument);
+        });
+        expression = right + '(' + args.join(',') + ')';
+        self.assign(intoId, expression);
+        recursionFn(intoId);
+      } else {
+        right = self.nextId();
+        left = {};
+        args = [];
+        self.recurse(ast.callee, right, left, function() {
+          self.if(self.notNull(right), function() {
+            self.addEnsureSafeFunction(right);
+            forEach(ast.arguments, function(expr) {
+              self.recurse(expr, undefined, undefined, function(argument) {
+                args.push(self.ensureSafeObject(argument));
               });
-              if (left.name) {
-                if (!self.state.expensiveChecks) {
-                  self.addEnsureSafeObject(left.context);
-                }
-                expression = self.member(left.context, left.name, left.computed) + '(' + args.join(',') + ')';
-              } else {
-                expression = right + '(' + args.join(',') + ')';
-              }
-              expression = self.ensureSafeObject(expression);
-              self.assign(intoId, expression);
-              recursionFn(intoId);
             });
+            if (left.name) {
+              if (!self.state.expensiveChecks) {
+                self.addEnsureSafeObject(left.context);
+              }
+              expression = self.member(left.context, left.name, left.computed) + '(' + args.join(',') + ')';
+            } else {
+              expression = right + '(' + args.join(',') + ')';
+            }
+            expression = self.ensureSafeObject(expression);
+            self.assign(intoId, expression);
+            recursionFn(intoId);
           });
-        }
-      }, function() {
-        self.assign(intoId, self.computedMember('i', ast.watchId));
-      });
+        });
+      }
       break;
     case AST.AssignmentExpression:
       right = this.nextId();
