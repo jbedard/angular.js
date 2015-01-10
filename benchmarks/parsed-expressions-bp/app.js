@@ -13,16 +13,14 @@ app.filter('noop', function() {
 });
 
 //Executes the specified expression as a watcher
-app.directive('bmPeWatch', function() {
+app.directive('bmPeWatch', function($parse) {
   return {
     restrict: 'A',
     compile: function($element, $attrs) {
-      $element.text( $attrs.bmPeWatch );
+      var watcher = $parse($attrs.bmPeWatch);
+      $element.text( $attrs.bmPeWatch);
       return function($scope, $element, $attrs) {
-        $scope.$watch($attrs.bmPeWatch, function(val) {
-          $element.text(val);
-
-        });
+        $scope.$watch(watcher);
       };
     }
   };
@@ -38,9 +36,10 @@ app.directive('bmPeWatchLiteral', function($parse) {
   return {
     restrict: 'A',
     compile: function($element, $attrs) {
+      var watcher = $parse($attrs.bmPeWatchLiteral, retZero);
       $element.text( $attrs.bmPeWatchLiteral );
       return function($scope, $element, $attrs) {
-        $scope.$watch( $parse($attrs.bmPeWatchLiteral, retZero) );
+        $scope.$watch(watcher);
       };
     }
   };
