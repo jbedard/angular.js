@@ -59,8 +59,8 @@ function nullFormRenameControl(control, name) {
  *
  */
 //asks for $scope to fool the BC controller module
-FormController.$inject = ['$element', '$attrs', '$scope', '$animate', '$interpolate'];
-function FormController(element, attrs, $scope, $animate, $interpolate) {
+FormController.$inject = ['$element', '$attrs', '$scope', '$animate'];
+function FormController(element, attrs, $scope, $animate) {
   var form = this,
       controls = [];
 
@@ -70,7 +70,7 @@ function FormController(element, attrs, $scope, $animate, $interpolate) {
   form.$error = {};
   form.$$success = {};
   form.$pending = undefined;
-  form.$name = $interpolate(attrs.name || attrs.ngForm || '')($scope);
+  form.$name = attrs.name || attrs.ngForm || '';
   form.$dirty = false;
   form.$pristine = true;
   form.$valid = true;
