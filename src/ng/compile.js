@@ -1914,6 +1914,14 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           // TODO: merge `controllers` and `elementControllers` into single object.
           controllers = {};
           elementControllers = {};
+
+          // For directives with element transclusion the element is a comment,
+          // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
+          // clean up (http://bugs.jquery.com/ticket/8335).
+          // Instead, we save the controllers for the element in a local hash and attach to .data
+          // later, once we have the actual element.
+          var elementControllerData = !hasElementTranscludeDirective && $element.data();
+
           forEach(controllerDirectives, function(directive) {
             var locals = {
               $scope: directive === newIsolateScopeDirective || directive.$$isolateScope ? isolateScope : scope,
@@ -1929,14 +1937,9 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
 
             controllerInstance = $controller(controller, locals, true, directive.controllerAs);
 
-            // For directives with element transclusion the element is a comment,
-            // but jQuery .data doesn't support attaching data to comment nodes as it's hard to
-            // clean up (http://bugs.jquery.com/ticket/8335).
-            // Instead, we save the controllers for the element in a local hash and attach to .data
-            // later, once we have the actual element.
             elementControllers[directive.name] = controllerInstance;
-            if (!hasElementTranscludeDirective) {
-              $element.data('$' + directive.name + 'Controller', controllerInstance.instance);
+            if (elementControllerData) {
+              elementControllerData['$' + directive.name + 'Controller'] = controllerInstance.instance;
             }
 
             controllers[directive.name] = controllerInstance;
