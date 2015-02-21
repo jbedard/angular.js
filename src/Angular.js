@@ -720,9 +720,14 @@ function copy(source, destination, stackSource, stackDest) {
 
   if (!destination) {
     destination = source;
-    if (source) {
+    if (isObject(source)) {
+      var index;
+      if (stackSource && (index = stackSource.indexOf(source)) !== -1) {
+        return stackDest[index];
+      }
+
       if (isArray(source)) {
-        destination = copy(source, [], stackSource, stackDest);
+        return copy(source, [], stackSource, stackDest);
       } else if (isTypedArray(source)) {
         destination = new source.constructor(source);
       } else if (isDate(source)) {
@@ -730,9 +735,14 @@ function copy(source, destination, stackSource, stackDest) {
       } else if (isRegExp(source)) {
         destination = new RegExp(source.source, source.toString().match(/[^\/]*$/)[0]);
         destination.lastIndex = source.lastIndex;
-      } else if (isObject(source)) {
+      } else {
         var emptyObject = Object.create(Object.getPrototypeOf(source));
-        destination = copy(source, emptyObject, stackSource, stackDest);
+        return copy(source, emptyObject, stackSource, stackDest);
+      }
+
+      if (stackDest) {
+        stackSource.push(source);
+        stackDest.push(destination);
       }
     }
   } else {
@@ -743,23 +753,14 @@ function copy(source, destination, stackSource, stackDest) {
     stackDest = stackDest || [];
 
     if (isObject(source)) {
-      var index = stackSource.indexOf(source);
-      if (index !== -1) return stackDest[index];
-
       stackSource.push(source);
       stackDest.push(destination);
     }
 
-    var result;
     if (isArray(source)) {
       destination.length = 0;
       for (var i = 0; i < source.length; i++) {
-        result = copy(source[i], null, stackSource, stackDest);
-        if (isObject(source[i])) {
-          stackSource.push(source[i]);
-          stackDest.push(result);
-        }
-        destination.push(result);
+        destination.push(copy(source[i], null, stackSource, stackDest));
       }
     } else {
       var h = destination.$$hashKey;
@@ -772,12 +773,7 @@ function copy(source, destination, stackSource, stackDest) {
       }
       for (var key in source) {
         if (source.hasOwnProperty(key)) {
-          result = copy(source[key], null, stackSource, stackDest);
-          if (isObject(source[key])) {
-            stackSource.push(source[key]);
-            stackDest.push(result);
-          }
-          destination[key] = result;
+          destination[key] = copy(source[key], null, stackSource, stackDest);
         }
       }
       setHashKey(destination,h);
