@@ -428,6 +428,7 @@ describe('angular', function() {
       expect(copy(null, {0:1,1:2,2:3})).toEqual({});
       expect(copy(undefined, {0:1,1:2,2:3})).toEqual({});
       expect(copy(new Date(), {0:1,1:2,2:3})).toEqual({});
+      expect(copy([4,5], {0:1,1:2,2:3})).toEqual({0:4,1:5,length:2});
       expect(copy(/a/, {0:1,1:2,2:3})).toEqual({});
       expect(copy(true, {0:1,1:2,2:3})).toEqual({});
     });

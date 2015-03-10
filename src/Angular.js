@@ -709,77 +709,82 @@ function arrayRemove(array, value) {
  </example>
  */
 function copy(source, destination, stackSource, stackDest) {
-  if (isWindow(source) || isScope(source)) {
-    throw ngMinErr('cpws',
-      "Can't copy! Making copies of Window or Scope instances is not supported.");
-  }
-  if (isTypedArray(destination)) {
-    throw ngMinErr('cpta',
-      "Can't copy! TypedArray destination cannot be mutated.");
-  }
-
-  if (!destination) {
-    destination = source;
-    if (isObject(source)) {
-      var index;
-      if (stackSource && (index = stackSource.indexOf(source)) !== -1) {
-        return stackDest[index];
-      }
-
-      if (isArray(source)) {
-        return copy(source, [], stackSource, stackDest);
-      } else if (isTypedArray(source)) {
-        destination = new source.constructor(source);
-      } else if (isDate(source)) {
-        destination = new Date(source.getTime());
-      } else if (isRegExp(source)) {
-        destination = new RegExp(source.source, source.toString().match(/[^\/]*$/)[0]);
-        destination.lastIndex = source.lastIndex;
-      } else {
-        var emptyObject = Object.create(Object.getPrototypeOf(source));
-        return copy(source, emptyObject, stackSource, stackDest);
-      }
-
-      if (stackDest) {
-        stackSource.push(source);
-        stackDest.push(destination);
-      }
+  // Validate and clear any passed destination
+  var destinationHashKey;
+  if (destination) {
+    if (source === destination) {
+      throw ngMinErr('cpi', "Can't copy! Source and destination are identical.");
     }
-  } else {
-    if (source === destination) throw ngMinErr('cpi',
-      "Can't copy! Source and destination are identical.");
-
-    stackSource = stackSource || [];
-    stackDest = stackDest || [];
-
-    if (isObject(source)) {
-      stackSource.push(source);
-      stackDest.push(destination);
+    if (isTypedArray(destination)) {
+      throw ngMinErr('cpta', "Can't copy! TypedArray destination cannot be mutated.");
     }
 
-    if (isArray(source)) {
+    if (isArray(destination)) {
       destination.length = 0;
-      for (var i = 0; i < source.length; i++) {
-        destination.push(copy(source[i], null, stackSource, stackDest));
-      }
-    } else {
-      var h = destination.$$hashKey;
-      if (isArray(destination)) {
-        destination.length = 0;
-      } else {
-        forEach(destination, function(value, key) {
-          delete destination[key];
-        });
-      }
-      for (var key in source) {
-        if (source.hasOwnProperty(key)) {
-          destination[key] = copy(source[key], null, stackSource, stackDest);
+    } else if (isObject(destination)) {
+      destinationHashKey = destination.$$hashKey;
+      for (var dkey in destination) {
+        if (destination.hasOwnProperty(dkey)) {
+          delete destination[dkey];
         }
       }
-      setHashKey(destination,h);
+    }
+  }
+
+  // Copy and recurse objects
+  if (isObject(source)) {
+    var index;
+    if (stackSource && (index = stackSource.indexOf(source)) !== -1) {
+      return stackDest[index];
     }
 
+    var traverse = false;
+    if (isArray(source)) {
+      destination = destination || new Array(source.length);
+      traverse = true;
+    } else if (!destination && isTypedArray(source)) {
+      destination = new source.constructor(source);
+    } else if (!destination && isDate(source)) {
+      destination = new Date(source.getTime());
+    } else if (!destination && isRegExp(source)) {
+      destination = new RegExp(source.source, source.toString().match(/[^\/]*$/)[0]);
+      destination.lastIndex = source.lastIndex;
+    } else {
+      if (isWindow(source) || isScope(source)) {
+        throw ngMinErr('cpws',
+          "Can't copy! Making copies of Window or Scope instances is not supported.");
+      }
+
+      destination = destination || Object.create(Object.getPrototypeOf(source));
+      traverse = true;
+    }
+
+    (stackSource || (stackSource = [])).push(source);
+    (stackDest   || (stackDest   = [])).push(destination);
+
+    if (traverse) {
+      if (isArray(source)) {
+        for (var i = 0, ii = destination.length = source.length; i < ii; i++) {
+          destination[i] = copy(source[i], null, stackSource, stackDest);
+        }
+      } else {
+        destinationHashKey = destinationHashKey || false;
+        for (var key in source) {
+          if (source.hasOwnProperty(key)) {
+            destination[key] = copy(source[key], null, stackSource, stackDest);
+          }
+        }
+      }
+    }
+  // Otherwise assign simple properties
+  } else if (!destination) {
+    destination = source;
   }
+
+  if (destinationHashKey !== undefined) {
+    setHashKey(destination, destinationHashKey);
+  }
+
   return destination;
 }
 
