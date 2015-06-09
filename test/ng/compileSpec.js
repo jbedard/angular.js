@@ -7669,6 +7669,97 @@ describe('$compile', function() {
       expect(ngIf2Scope.$$destroyed).toEqual(true);
     }));
 
+    it('should broadcast $destroy only on removed elements, not replaced', function() {
+      var linkCalls = [];
+      var destroyCalls = [];
+
+      module(function($compileProvider) {
+        $compileProvider.directive('replace', function() {
+          return {
+            multiElement: true,
+            replace: true,
+            templateUrl: 'template123'
+          };
+        });
+
+        $compileProvider.directive('foo', function() {
+          return {
+            link: function($scope, $element, $attrs) {
+              linkCalls.push($attrs.foo);
+              $element.on('$destroy', function() {
+                destroyCalls.push($attrs.foo);
+              });
+            }
+          };
+        });
+      });
+
+      inject(function($compile, $templateCache, $rootScope) {
+        $templateCache.put('template123', '<div></div>');
+
+        $compile(
+          '<div replace-start foo="1"><span foo="1.1"></span></div>' +
+          '<div foo="2"><span foo="2.1"></span></div>' +
+          '<div replace-end foo="3"><span foo="3.1"></span></div>'
+        )($rootScope);
+
+        expect(linkCalls).toEqual(['2', '3']);
+        expect(destroyCalls.length).toBe(0);
+        $rootScope.$apply();
+        expect(linkCalls).toEqual(['2', '3', '1']);
+        expect(destroyCalls).toEqual(['2', '3']);
+      });
+    });
+
+    function testReplaceElementCleanup(replace, asyncTemplate) {
+      module(function($compileProvider) {
+        $compileProvider.directive('theDir', function() {
+          return {
+            multiElement: true,
+            replace: !replace,
+            template: asyncTemplate ? undefined : '<div></div>',
+            templateUrl: asyncTemplate ? 'the-dir-template-url' : undefined
+          };
+        });
+      });
+      inject(function($templateCache, $compile, $rootScope) {
+        $templateCache.put('the-dir-template-url', '<div></div>');
+
+        var toCompile = jqLite(
+          '<div>' +
+          '<div the-dir-start><span></span></div>' +
+          '<div><span></span></div>' +
+          '<div the-dir-end><span></span></div>' +
+          '</div>'
+        );
+
+        var preCompiledChildren = toCompile[0].querySelectorAll('*');
+        forEach(preCompiledChildren, function(element, i) {
+          jqLite.data(element, 'foo', 'node#'+i);
+        });
+
+        var linkedElements = $compile(toCompile)($rootScope);
+        $rootScope.$apply();
+        linkedElements.remove();
+
+        forEach(preCompiledChildren, function(element, i) {
+          expect(jqLite.hasData(element)).toBe(false, "element #" + i);
+        });
+      });
+    }
+    it('should clean the data of all removed elements when using template', function() {
+      testReplaceElementCleanup(false, false);
+    });
+    it('should clean the data of all removed elements when using templateUrl', function() {
+      testReplaceElementCleanup(false, true);
+    });
+    it('should clean the data of all replaced/removed elements when using template/replace', function() {
+      testReplaceElementCleanup(true, false);
+    });
+    it('should clean the data of all replaced/removed elements when using templateUrl/replace', function() {
+      testReplaceElementCleanup(true, true);
+    });
+
     it('should throw error if unterminated', function() {
       module(function($compileProvider) {
         $compileProvider.directive('foo', function() {
