@@ -1533,18 +1533,19 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
           }
 
           // use class as directive
-          className = node.className;
-          if (isObject(className)) {
-              // Maybe SVGAnimatedString
-              className = className.animVal;
-          }
-          if (isString(className) && className !== '') {
-            while (match = CLASS_DIRECTIVE_REGEXP.exec(className)) {
-              nName = directiveNormalize(match[2]);
-              if (addDirective(directives, nName, 'C', maxPriority, ignoreDirective)) {
-                attrs[nName] = trim(match[3]);
+          if (className = node.className) {
+            if (isObject(className)) {
+                // Maybe SVGAnimatedString
+                className = className.animVal;
+            }
+            if (className && isString(className)) {
+              while (match = CLASS_DIRECTIVE_REGEXP.exec(className)) {
+                nName = directiveNormalize(match[2]);
+                if (addDirective(directives, nName, 'C', maxPriority, ignoreDirective)) {
+                  attrs[nName] = trim(match[3]);
+                }
+                className = className.substr(match.index + match[0].length);
               }
-              className = className.substr(match.index + match[0].length);
             }
           }
           break;
