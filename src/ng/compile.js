@@ -1220,6 +1220,8 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         },
         NG_ATTR_BINDING = /^ngAttr[A-Z]/;
 
+    var MULTI_ELEMENT_START_REGEX = /Start$/;
+
     compile.$$addBindingInfo = debugInfoEnabled ? function $$addBindingInfo($element, binding) {
       var bindings = $element.data('$binding') || [];
 
@@ -1509,13 +1511,12 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
                 });
             }
 
-            var directiveNName = ngAttrName.replace(/(Start|End)$/, '');
-            if (directiveIsMultiElement(directiveNName)) {
-              if (ngAttrName === directiveNName + 'Start') {
-                attrStartName = name;
-                attrEndName = name.substr(0, name.length - 5) + 'end';
-                name = name.substr(0, name.length - 6);
-              }
+            // support multiElement -start/end directives
+            var directiveNName = ngAttrName.replace(MULTI_ELEMENT_START_REGEX, '');
+            if (ngAttrName !== directiveNName && directiveIsMultiElement(directiveNName)) {
+              attrStartName = name;
+              attrEndName = name.substr(0, name.length - 5) + 'end';
+              name = name.substr(0, name.length - 6);
             }
 
             nName = directiveNormalize(name.toLowerCase());
