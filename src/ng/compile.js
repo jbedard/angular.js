@@ -2111,17 +2111,15 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
       if (hasDirectives[name]) {
         for (var directive, directives = $injector.get(name + Suffix),
             i = 0, ii = directives.length; i < ii; i++) {
-          try {
-            directive = directives[i];
-            if ((maxPriority === undefined || maxPriority > directive.priority) &&
-                 directive.restrict.indexOf(location) != -1) {
-              if (startAttrName) {
-                directive = inherit(directive, {$$start: startAttrName, $$end: endAttrName});
-              }
-              tDirectives.push(directive);
-              match = directive;
+          directive = directives[i];
+          if ((maxPriority === undefined || maxPriority > directive.priority) &&
+               directive.restrict.indexOf(location) != -1) {
+            if (startAttrName) {
+              directive = inherit(directive, {$$start: startAttrName, $$end: endAttrName});
             }
-          } catch (e) { $exceptionHandler(e); }
+            tDirectives.push(directive);
+            match = directive;
+          }
         }
       }
       return match;
