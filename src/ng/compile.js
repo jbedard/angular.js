@@ -723,7 +723,7 @@ var $compileMinErr = minErr('$compile');
  */
 $CompileProvider.$inject = ['$provide', '$$sanitizeUriProvider'];
 function $CompileProvider($provide, $$sanitizeUriProvider) {
-  var hasDirectives = {},
+  var hasDirectives = createMap(),
       Suffix = 'Directive',
       COMMENT_DIRECTIVE_REGEXP = /^\s*directive\:\s*([\w\-]+)\s+(.*)$/,
       CLASS_DIRECTIVE_REGEXP = /(([\w\-]+)(?:\:([^;]+))?;?)/,
@@ -832,7 +832,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
     if (isString(name)) {
       assertValidDirectiveName(name);
       assertArg(directiveFactory, 'directiveFactory');
-      if (!hasDirectives.hasOwnProperty(name)) {
+      if (!hasDirectives[name]) {
         hasDirectives[name] = [];
         $provide.factory(name + Suffix, ['$injector', '$exceptionHandler',
           function($injector, $exceptionHandler) {
@@ -2104,7 +2104,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
                           endAttrName) {
       if (name === ignoreDirective) return null;
       var match = null;
-      if (hasDirectives.hasOwnProperty(name)) {
+      if (hasDirectives[name]) {
         for (var directive, directives = $injector.get(name + Suffix),
             i = 0, ii = directives.length; i < ii; i++) {
           try {
@@ -2133,7 +2133,7 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
      * @returns true if directive was registered as multi-element.
      */
     function directiveIsMultiElement(name) {
-      if (hasDirectives.hasOwnProperty(name)) {
+      if (hasDirectives[name]) {
         for (var directive, directives = $injector.get(name + Suffix),
             i = 0, ii = directives.length; i < ii; i++) {
           directive = directives[i];
