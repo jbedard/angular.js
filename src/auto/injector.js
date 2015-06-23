@@ -778,19 +778,22 @@ function createInjector(modulesToLoad, strictDi) {
                     serviceName + ' <- ' + path.join(' <- '));
         }
         return cache[serviceName];
-      } else {
-        try {
-          path.unshift(serviceName);
-          cache[serviceName] = INSTANTIATING;
-          return cache[serviceName] = factory(serviceName, caller);
-        } catch (err) {
-          if (cache[serviceName] === INSTANTIATING) {
-            delete cache[serviceName];
-          }
-          throw err;
-        } finally {
-          path.shift();
+      }
+      return instantiateService(serviceName, caller);
+    }
+
+    function instantiateService(serviceName, caller) {
+      try {
+        path.unshift(serviceName);
+        cache[serviceName] = INSTANTIATING;
+        return cache[serviceName] = factory(serviceName, caller);
+      } catch (err) {
+        if (cache[serviceName] === INSTANTIATING) {
+          delete cache[serviceName];
         }
+        throw err;
+      } finally {
+        path.shift();
       }
     }
 
