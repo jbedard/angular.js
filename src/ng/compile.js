@@ -1307,6 +1307,10 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
               compileNodes($compileNodes, transcludeFn, $compileNodes,
                            maxPriority, ignoreDirective, previousCompileContext);
       compile.$$addScopeClass($compileNodes);
+
+      //Clear references not required in the returned closure
+      transcludeFn = undefined;
+
       var namespace = null;
       return function publicLinkFn(scope, cloneConnectFn, options) {
         assertArg(scope, 'scope');
@@ -1431,6 +1435,9 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         //use the previous context only for the first element in the virtual group
         previousCompileContext = null;
       }
+
+      //Clear references not required in the returned closure
+      $rootElement = nodeList = attrs = undefined;
 
       // return a linking function if we have found anything, null otherwise
       return linkFnFound ? compositeLinkFn : null;
@@ -2003,6 +2010,9 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
 
       previousCompileContext.hasElementTranscludeDirective = hasElementTranscludeDirective;
 
+      //Clear references not required in the returned closure
+      $template = $compileNode = childTranscludeFn = linkFn = previousCompileContext = undefined;
+
       // might be normal or delayed nodeLinkFn depending on if templateUrl is present
       return nodeLinkFn;
 
@@ -2133,6 +2143,9 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
               transcludeFn
           );
         }
+
+        //Clear references not required in the returned closure
+        linkFn = attrs = transcludeFn = childLinkFn = linkNode = $rootElement = undefined;
 
         // This is the function that is injected as `$transclude`.
         // Note: all arguments are optional!
