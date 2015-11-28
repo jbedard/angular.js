@@ -6015,6 +6015,24 @@ describe('$compile', function() {
       });
 
 
+      it('should throw if a transcluded node is transcluded again', function() {
+        module(function() {
+          directive('trans', valueFn({
+            transclude: 'content',
+            link: function(scope, element, attr, ctrl, $transclude) {
+              $transclude();
+              $transclude();
+            }
+          }));
+        });
+        inject(function($rootScope, $compile) {
+          expect(function() {
+            $compile('<trans></trans>')($rootScope);
+          }).toThrowMinErr('$compile', 'multitransclude', 'This element has already been transcluded.');
+        });
+      });
+
+
       it('should not leak if two "element" transclusions are on the same element (with debug info)', function() {
         if (jQuery) {
           // jQuery 2.x doesn't expose the cache storage.

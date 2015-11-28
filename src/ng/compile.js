@@ -2150,6 +2150,10 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
         // This is the function that is injected as `$transclude`.
         // Note: all arguments are optional!
         function controllersBoundTransclude(scope, cloneAttachFn, futureParentElement, slotName) {
+          if (!boundTranscludeFn) {
+            throw $compileMinErr('multitransclude', 'This element has already been transcluded.');
+          }
+
           var transcludeControllers;
           // No scope passed in:
           if (!isScope(scope)) {
@@ -2166,16 +2170,21 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             futureParentElement = hasElementTranscludeDirective ? $element.parent() : $element;
           }
           if (slotName) {
-            var slotTranscludeFn = boundTranscludeFn.$$slots[slotName];
-            if (!slotTranscludeFn) {
+            boundTranscludeFn = boundTranscludeFn.$$slots[slotName];
+            if (!boundTranscludeFn) {
               throw $compileMinErr('noslot',
                'No parent directive that requires a transclusion with slot name "{0}". ' +
                'Element: {1}',
                slotName, startingTag($element));
             }
-            return slotTranscludeFn(scope, cloneAttachFn, transcludeControllers, futureParentElement, scopeToChild);
           }
-          return boundTranscludeFn(scope, cloneAttachFn, transcludeControllers, futureParentElement, scopeToChild);
+
+          var res = boundTranscludeFn(scope, cloneAttachFn, transcludeControllers, futureParentElement, scopeToChild);
+          //Clear references not required if this transcluded the original nodes
+          if (!cloneAttachFn) {
+            boundTranscludeFn = scopeToChild = elementControllers = $element = null;
+          }
+          return res;
         }
       }
     }
