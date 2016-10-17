@@ -3508,21 +3508,20 @@ function $CompileProvider($provide, $$sanitizeUriProvider) {
             if (optional && !attrs[attrName]) break;
 
             parentGet = $parse(attrs[attrName]);
-            var deepWatch = parentGet.literal;
 
             var initialValue = destination[scopeName] = parentGet(scope);
             initialChanges[scopeName] = new SimpleChange(_UNINITIALIZED_VALUE, destination[scopeName]);
 
             removeWatch = scope.$watch(parentGet, function parentValueWatchAction(newValue, oldValue) {
               if (oldValue === newValue) {
-                if (oldValue === initialValue || (deepWatch && equals(oldValue, initialValue))) {
+                if (equals(oldValue, initialValue)) {
                   return;
                 }
                 oldValue = initialValue;
               }
               recordChanges(scopeName, newValue, oldValue);
               destination[scopeName] = newValue;
-            }, deepWatch);
+            });
 
             removeWatchCollection.push(removeWatch);
             break;
