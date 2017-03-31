@@ -1933,6 +1933,10 @@ function $ParseProvider() {
         return isDefined(value) ? result : value;
       };
 
+      fn.constant = parsedExpression.constant && !interceptorFn.$stateful;
+      fn.oneTime = parsedExpression.oneTime;
+      fn.literal = parsedExpression.literal;
+
       // Propagate $$watchDelegates other then inputsWatchDelegate
       useInputs = !parsedExpression.inputs;
       if (watchDelegate && watchDelegate !== inputsWatchDelegate) {

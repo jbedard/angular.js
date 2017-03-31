@@ -595,6 +595,10 @@ function $RootScopeProvider() {
         var initRun = true;
         var oldLength = 0;
 
+        if (changeDetected.oneTime || changeDetector.literal || changeDetector.constant) {
+          return this.$watch(obj, listener);
+        }
+
         function $watchCollectionInterceptor(_value) {
           newValue = _value;
           var newLength, key, bothNaN, newItem, oldItem;

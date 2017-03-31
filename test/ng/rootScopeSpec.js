@@ -221,7 +221,7 @@ describe('Scope', function() {
       expect($rootScope.$$watchers.length).toEqual(0);
     }));
 
-    it('should clean up stable watches on the watch queue', inject(function($rootScope) {
+    it('should clean up stable one-time watches on the watch queue', inject(function($rootScope) {
       $rootScope.$watch('::foo', function() {});
       expect($rootScope.$$watchers.length).toEqual(1);
 
@@ -233,7 +233,19 @@ describe('Scope', function() {
       expect($rootScope.$$watchers.length).toEqual(0);
     }));
 
-    it('should clean up stable watches from $watchCollection', inject(function($rootScope) {
+    it('should clean up stable one-time literal watches on the watch queue', inject(function($rootScope) {
+      $rootScope.$watch('::[foo]', function() {});
+      expect($rootScope.$$watchers.length).toEqual(1);
+
+      $rootScope.$digest();
+      expect($rootScope.$$watchers.length).toEqual(1);
+
+      $rootScope.foo = 'foo';
+      $rootScope.$digest();
+      expect($rootScope.$$watchers.length).toEqual(0);
+    }));
+
+    it('should clean up stable one-time watches from $watchCollection', inject(function($rootScope) {
       $rootScope.$watchCollection('::foo', function() {});
       expect($rootScope.$$watchers.length).toEqual(1);
 
@@ -245,7 +257,20 @@ describe('Scope', function() {
       expect($rootScope.$$watchers.length).toEqual(0);
     }));
 
-    it('should clean up stable watches from $watchGroup', inject(function($rootScope) {
+    //TODO: BROKEN
+    it('should clean up stable one-time literal watches from $watchCollection', inject(function($rootScope) {
+      $rootScope.$watchCollection('::[foo]', function() {});
+      expect($rootScope.$$watchers.length).toEqual(1);
+
+      $rootScope.$digest();
+      expect($rootScope.$$watchers.length).toEqual(1);
+
+      $rootScope.foo = 1;
+      $rootScope.$digest();
+      expect($rootScope.$$watchers.length).toEqual(0);
+    }));
+
+    it('should clean up stable one-time watches from $watchGroup', inject(function($rootScope) {
       $rootScope.$watchGroup(['::foo', '::bar'], function() {});
       expect($rootScope.$$watchers.length).toEqual(2);
 
@@ -690,7 +715,7 @@ describe('Scope', function() {
     });
 
 
-    describe('$watchCollection', function() {
+    describe('$watchCollection var', function() {
       var log, $rootScope, deregister;
 
       beforeEach(inject(function(_$rootScope_, _log_) {
@@ -773,7 +798,7 @@ describe('Scope', function() {
         });
 
 
-        it('should not trigger change when object in collection changes', function() {
+        it('should not trigger change when object in nested collection changes', function() {
           $rootScope.obj = [{}];
           $rootScope.$digest();
           expect(log.empty()).toEqual([{newVal: [{}], oldVal: [{}], identical: true}]);
@@ -867,7 +892,7 @@ describe('Scope', function() {
         });
 
 
-        it('should not trigger change when object in collection changes', function() {
+        it('should not trigger change when object in nested collection changes', function() {
           $rootScope.obj = {name: {}};
           $rootScope.$digest();
           expect(log.empty()).toEqual([{newVal: {name: {}}, oldVal: {name: {}}, identical: true}]);
@@ -931,6 +956,77 @@ describe('Scope', function() {
       });
     });
 
+    describe('$watchCollection literal', function() {
+      it('should return oldCollection === newCollection only on the first listener call',
+          inject(function($rootScope, log) {
+
+        $rootScope.$watchCollection('[val]', function(newVal, oldVal) {
+          log(newVal === oldVal);
+        });
+
+        // first time should be identical
+        $rootScope.$apply("val = 1");
+        expect(log).toEqual([true]);
+
+        // second time should be different
+        $rootScope.$apply("val = 2");
+        expect(log).toEqual([true, false]);
+      }));
+
+      it('should trigger when property changes in collection', inject(function($rootScope, log) {
+        $rootScope.$watchCollection('[val]', function(newVal, oldVal) {
+          log(newVal);
+        });
+
+        $rootScope.$apply("val = 1");
+        expect(log.empty()).toEqual([[1]]);
+
+        $rootScope.$apply("val = 2");
+        expect(log.empty()).toEqual([[2]]);
+      }));
+
+      it('should not trigger change when object in nested collection changes', inject(function($rootScope, log) {
+        $rootScope.$watchCollection('[val]', function(newVal, oldVal) {
+          log(newVal);
+        });
+
+        $rootScope.$apply("val = {}");
+        expect(log.empty()).toEqual([[{}]]);
+
+        $rootScope.$apply("val.name = 'foo'");
+        expect(log).toEqual([]);
+      }));
+
+
+      it('should only become stable when all the elements of a literal have defined values',
+          inject(function($parse, $rootScope, log) {
+        $rootScope.$watchCollection('::[foo,bar]', function(value) { log(value); }, true);
+
+        expect(log.empty()).toEqual([]);
+        expect($rootScope.$$watchers.length).toBe(1);
+
+        $rootScope.$digest();
+        expect($rootScope.$$watchers.length).toBe(1);
+        expect(log.empty()).toEqual([[undefined, undefined]]);
+
+        $rootScope.foo = 'foo';
+        $rootScope.$digest();
+        expect($rootScope.$$watchers.length).toBe(1);
+        expect(log.empty()).toEqual([['foo', undefined]]);
+
+        $rootScope.foo = 'foobar';
+        $rootScope.bar = 'bar';
+        $rootScope.$digest();
+        expect($rootScope.$$watchers.length).toBe(0);
+        expect(log.empty()).toEqual([['foobar', 'bar']]);
+
+        $rootScope.foo = 'baz';
+        $rootScope.$digest();
+        expect($rootScope.$$watchers.length).toBe(0);
+        expect(log.empty()).toEqual([]);
+      }));
+
+    });
 
     describe('optimizations', function() {
 
