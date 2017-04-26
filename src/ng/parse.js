@@ -1917,8 +1917,7 @@ function $ParseProvider() {
 
       var fn = parsedExpression.oneTime ? oneTimeInterceptedExpression : regularInterceptedExpression;
 
-      // Propogate the literal/oneTime attributes
-      fn.literal = parsedExpression.literal;
+      // Propogate the oneTime attribute
       fn.oneTime = parsedExpression.oneTime;
 
       // Propagate or create inputs / $$watchDelegates
