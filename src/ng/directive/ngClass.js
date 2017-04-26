@@ -8,6 +8,11 @@
 
 function classDirective(name, selector) {
   name = 'ngClass' + name;
+
+  // Mark toClassString as $stateful since it essentially adds state by
+  // collapsing nested collections
+  toClassString.$stateful = true;
+
   var indexWatchExpression;
 
   return ['$parse', function($parse) {

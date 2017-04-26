@@ -567,6 +567,19 @@ describe('ngClass', function() {
     })
   );
 
+  it('should track changes of mutating object inside an array literal',
+    inject(function($rootScope, $compile) {
+      $rootScope.classVar = {orange: true};
+      element = $compile('<div ng-class="[classVar]"></div>')($rootScope);
+
+      $rootScope.$digest();
+      expect(element).toHaveClass('orange');
+
+      $rootScope.$apply('classVar.orange = false');
+      expect(element).not.toHaveClass('orange');
+    })
+  );
+
   describe('large objects', function() {
     var getProp;
     var veryLargeObj;
