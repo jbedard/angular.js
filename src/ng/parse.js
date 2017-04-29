@@ -622,122 +622,183 @@ function isStateless($filter, filterName) {
   return !fn.$stateful;
 }
 
-function findConstantAndWatchExpressions(ast, $filter) {
-  var allConstants;
-  var argsToWatch;
-  var isStatelessFilter;
-  switch (ast.type) {
-  case AST.Program:
-    allConstants = true;
-    forEach(ast.body, function(expr) {
-      findConstantAndWatchExpressions(expr.expression, $filter);
-      allConstants = allConstants && expr.expression.constant;
-    });
-    ast.constant = allConstants;
-    break;
-  case AST.Literal:
-    ast.constant = true;
-    ast.toWatch = [];
-    break;
-  case AST.UnaryExpression:
-    findConstantAndWatchExpressions(ast.argument, $filter);
-    ast.constant = ast.argument.constant;
-    ast.toWatch = ast.argument.toWatch;
-    break;
-  case AST.BinaryExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = ast.left.toWatch.concat(ast.right.toWatch);
-    break;
-  case AST.LogicalExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = ast.constant ? [] : [ast];
-    break;
-  case AST.ConditionalExpression:
-    findConstantAndWatchExpressions(ast.test, $filter);
-    findConstantAndWatchExpressions(ast.alternate, $filter);
-    findConstantAndWatchExpressions(ast.consequent, $filter);
-    ast.constant = ast.test.constant && ast.alternate.constant && ast.consequent.constant;
-    ast.toWatch = ast.constant ? [] : [ast];
-    break;
-  case AST.Identifier:
-    ast.constant = false;
-    ast.toWatch = [ast];
-    break;
-  case AST.MemberExpression:
-    findConstantAndWatchExpressions(ast.object, $filter);
-    if (ast.computed) {
-      findConstantAndWatchExpressions(ast.property, $filter);
-    }
-    ast.constant = ast.object.constant && (!ast.computed || ast.property.constant);
-    ast.toWatch = [ast];
-    break;
-  case AST.CallExpression:
-    isStatelessFilter = ast.filter ? isStateless($filter, ast.callee.name) : false;
-    allConstants = isStatelessFilter;
-    argsToWatch = [];
-    forEach(ast.arguments, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
-      allConstants = allConstants && expr.constant;
-      if (!expr.constant) {
-        argsToWatch.push.apply(argsToWatch, expr.toWatch);
-      }
-    });
-    ast.constant = allConstants;
-    ast.toWatch = isStatelessFilter ? argsToWatch : [ast];
-    break;
-  case AST.AssignmentExpression:
-    findConstantAndWatchExpressions(ast.left, $filter);
-    findConstantAndWatchExpressions(ast.right, $filter);
-    ast.constant = ast.left.constant && ast.right.constant;
-    ast.toWatch = [ast];
-    break;
-  case AST.ArrayExpression:
-    allConstants = true;
-    argsToWatch = [];
-    forEach(ast.elements, function(expr) {
-      findConstantAndWatchExpressions(expr, $filter);
-      allConstants = allConstants && expr.constant;
-      if (!expr.constant) {
-        argsToWatch.push.apply(argsToWatch, expr.toWatch);
-      }
-    });
-    ast.constant = allConstants;
-    ast.toWatch = argsToWatch;
-    break;
-  case AST.ObjectExpression:
-    allConstants = true;
-    argsToWatch = [];
-    forEach(ast.properties, function(property) {
-      findConstantAndWatchExpressions(property.value, $filter);
-      allConstants = allConstants && property.value.constant && !property.computed;
-      if (!property.value.constant) {
-        argsToWatch.push.apply(argsToWatch, property.value.toWatch);
-      }
-      if (property.computed) {
-        findConstantAndWatchExpressions(property.key, $filter);
-        if (!property.key.constant) {
-          argsToWatch.push.apply(argsToWatch, property.key.toWatch);
-        }
-      }
+function recurseAst(ast, pre, post, depth) {
+  // Helper to avoid repeating the pre/post/depth args
+  function visitChild(subAst) {
+    recurseAst(subAst, pre, post, (depth || 0) + 1);
+  }
 
-    });
-    ast.constant = allConstants;
-    ast.toWatch = argsToWatch;
-    break;
-  case AST.ThisExpression:
-    ast.constant = false;
-    ast.toWatch = [];
-    break;
-  case AST.LocalsExpression:
-    ast.constant = false;
-    ast.toWatch = [];
-    break;
+  // Pre recursion callback, a chance to prevent recursing
+  if (pre) {
+    if (false === pre(ast, depth || 0)) {
+      return;
+    }
+  }
+
+  // Recurse anything with child AST nodes
+  switch (ast.type) {
+    case AST.Program:
+      forEach(ast.body, visitChild);
+      break;
+
+    case AST.ArrayExpression:
+      forEach(ast.elements, visitChild);
+      break;
+
+    case AST.ObjectExpression:
+      forEach(ast.properties, visitChild);
+      break;
+
+    case AST.ExpressionStatement:
+      visitChild(ast.expression);
+      break;
+
+    case AST.LogicalExpression:
+    case AST.BinaryExpression:
+      visitChild(ast.left);
+      visitChild(ast.right);
+      break;
+
+    case AST.UnaryExpression:
+      visitChild(ast.argument);
+      break;
+
+    case AST.ConditionalExpression:
+      visitChild(ast.test);
+      visitChild(ast.alternate);
+      visitChild(ast.consequent);
+      break;
+
+    case AST.CallExpression:
+      forEach(ast.arguments, visitChild);
+      break;
+
+    case AST.AssignmentExpression:
+      visitChild(ast.left);
+      visitChild(ast.right);
+      break;
+
+    case AST.Property:
+      visitChild(ast.value);
+      if (ast.computed) {
+        visitChild(ast.key);
+      }
+      break;
+
+    case AST.MemberExpression:
+      visitChild(ast.object);
+      if (ast.computed) {
+        visitChild(ast.property);
+      }
+      break;
+  }
+
+  // Post recursion callback
+  if (post) {
+    post(ast, depth || 0);
   }
 }
+
+function findConstantAndWatchExpressions(root, $filter) {
+  recurseAst(root, noop, function postRecurse(ast) {
+    var allConstants;
+    var argsToWatch;
+    var isStatelessFilter;
+    switch (ast.type) {
+      case AST.Program:
+        allConstants = true;
+        forEach(ast.body, function(expr) {
+          allConstants = allConstants && expr.expression.constant;
+        });
+        ast.constant = allConstants;
+        break;
+      case AST.Literal:
+        ast.constant = true;
+        ast.toWatch = [];
+        break;
+      case AST.UnaryExpression:
+        ast.constant = ast.argument.constant;
+        ast.toWatch = ast.argument.toWatch;
+        break;
+      case AST.BinaryExpression:
+        ast.constant = ast.left.constant && ast.right.constant;
+        ast.toWatch = ast.left.toWatch.concat(ast.right.toWatch);
+        break;
+      case AST.LogicalExpression:
+        ast.constant = ast.left.constant && ast.right.constant;
+        ast.toWatch = ast.constant ? [] : [ast];
+        break;
+      case AST.ConditionalExpression:
+        ast.constant = ast.test.constant && ast.alternate.constant && ast.consequent.constant;
+        ast.toWatch = ast.constant ? [] : [ast];
+        break;
+      case AST.Identifier:
+        ast.constant = false;
+        ast.toWatch = [ast];
+        break;
+      case AST.MemberExpression:
+        ast.constant = ast.object.constant && (!ast.computed || ast.property.constant);
+        ast.toWatch = [ast];
+        break;
+      case AST.CallExpression:
+        isStatelessFilter = ast.filter ? isStateless($filter, ast.callee.name) : false;
+        allConstants = isStatelessFilter;
+        argsToWatch = [];
+        forEach(ast.arguments, function(expr) {
+          allConstants = allConstants && expr.constant;
+          if (!expr.constant) {
+            argsToWatch.push.apply(argsToWatch, expr.toWatch);
+          }
+        });
+        ast.constant = allConstants;
+        ast.toWatch = isStatelessFilter ? argsToWatch : [ast];
+        break;
+      case AST.AssignmentExpression:
+        ast.constant = ast.left.constant && ast.right.constant;
+        ast.toWatch = [ast];
+        break;
+      case AST.ArrayExpression:
+        allConstants = true;
+        argsToWatch = [];
+        forEach(ast.elements, function(expr) {
+          allConstants = allConstants && expr.constant;
+          if (!expr.constant) {
+            argsToWatch.push.apply(argsToWatch, expr.toWatch);
+          }
+        });
+        ast.constant = allConstants;
+        ast.toWatch = argsToWatch;
+        break;
+      case AST.ObjectExpression:
+        allConstants = true;
+        argsToWatch = [];
+        forEach(ast.properties, function(property) {
+          allConstants = allConstants && property.value.constant && !property.computed;
+          if (!property.value.constant) {
+            argsToWatch.push.apply(argsToWatch, property.value.toWatch);
+          }
+          if (property.computed) {
+            if (!property.key.constant) {
+              argsToWatch.push.apply(argsToWatch, property.key.toWatch);
+            }
+          }
+
+        });
+        ast.constant = allConstants;
+        ast.toWatch = argsToWatch;
+        break;
+      case AST.ThisExpression:
+        ast.constant = false;
+        ast.toWatch = [];
+        break;
+      case AST.LocalsExpression:
+        ast.constant = false;
+        ast.toWatch = [];
+        break;
+      }
+  });
+}
+
 
 function getInputs(body) {
   if (body.length !== 1) return;
