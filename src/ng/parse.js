@@ -699,6 +699,75 @@ function recurseAst(ast, pre, post, depth) {
   }
 }
 
+function isStateful(ast) {
+    switch (ast.type) {
+      case AST.MemberExpression:
+      case AST.Identifier:
+      case AST.Property:
+      case AST.ConditionalExpression:
+        return true;
+
+      case AST.CallExpression:
+        return !ast.filter;
+    }
+}
+function hasDirectSideEffect(ast) {
+  switch (ast.type) {
+    case AST.AssignmentExpression:
+      return true;
+
+    case AST.CallExpression:
+      return !ast.filter;
+  }
+}
+function isChild(p, c) {
+  var is = false;
+  recurseAst(p, function(ast) {
+    is = is || ast === c;
+    return !is;
+  });
+  return is;
+}
+
+function stagify(root) {
+  var stages = root.stages = [];
+  recurseAst(root, function(ast, depth) {
+    (stages[depth] || (stages[depth] = [])).push(ast);
+    return !(isStateful(ast) || hasDirectSideEffect(ast));
+  });
+
+  // Drop useless stages
+  stages = stages.filter(function(stage) {
+    if (stage.length > 1) {
+      return true;
+    }
+
+    var ast = stage[0];
+    switch (ast.type) {
+      case AST.Program:
+        return ast.body.length > 1;
+      case AST.ExpressionStatement:
+        return false;
+    }
+
+    return true;
+  });
+
+  // Bottom of the AST up
+  for (var i = stages.length - 2; 0 < i; i--) {
+    // For each entry on this level of the AST
+    for (var j = stages[i].length - 1; 0 <= j; j--) {
+      // If this entry does not depend on anything below it, push it down
+      if (!stages[i+1].some(function(e) { return isChild(stages[i][j], e); })) {
+        stages[i+1].push(stages[i][j]);
+        stages[i][j];
+      }
+    }
+  }
+
+  return stages;
+}
+
 function findConstantAndWatchExpressions(root, $filter) {
   recurseAst(root, noop, function postRecurse(ast) {
     var allConstants;
@@ -891,6 +960,7 @@ ASTCompiler.prototype = {
           ifDefined,
           plusFn);
     this.state = this.stage = undefined;
+    fn.stages = stagify(ast);
     return fn;
   },
 

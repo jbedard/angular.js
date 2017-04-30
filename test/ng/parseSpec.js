@@ -4,7 +4,7 @@
 // are used.
 /* eslint-disable no-constant-condition */
 
-describe('parser', function() {
+fdescribe('parser', function() {
 
   describe('lexer', function() {
     var lex;
