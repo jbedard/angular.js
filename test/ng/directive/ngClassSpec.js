@@ -88,7 +88,7 @@ describe('ngClass', function() {
     expect(element.hasClass('AnotB')).toBeFalsy();
   }));
 
-  it('should support adding multiple classes via an array mixed with conditionally via a map', inject(function($rootScope, $compile) {
+  it('should support adding multiple classes via a literal array mixed with conditionally via a literal map', inject(function($rootScope, $compile) {
     element = $compile('<div class="existing" ng-class="[\'A\', {\'B\': condition}]"></div>')($rootScope);
     $rootScope.$digest();
     expect(element.hasClass('existing')).toBeTruthy();
@@ -502,21 +502,6 @@ describe('ngClass', function() {
     })
   );
 
-  it('should support mixed array/object variable with a mutating object',
-    inject(function($rootScope, $compile) {
-      element = $compile('<div ng-class="classVar"></div>')($rootScope);
-
-      $rootScope.classVar = [{orange: true}];
-      $rootScope.$digest();
-      expect(element).toHaveClass('orange');
-
-      $rootScope.classVar[0].orange = false;
-      $rootScope.$digest();
-
-      expect(element).not.toHaveClass('orange');
-    })
-  );
-
   it('should do value stabilization as expected when one-time binding',
     inject(function($rootScope, $compile) {
       element = $compile('<div ng-class="::className"></div>')($rootScope);
@@ -554,19 +539,6 @@ describe('ngClass', function() {
     })
   );
 
-  it('should track changes of mutating object inside an array',
-    inject(function($rootScope, $compile) {
-      $rootScope.classVar = [{orange: true}];
-      element = $compile('<div ng-class="classVar"></div>')($rootScope);
-
-      $rootScope.$digest();
-      expect(element).toHaveClass('orange');
-
-      $rootScope.$apply('classVar[0].orange = false');
-      expect(element).not.toHaveClass('orange');
-    })
-  );
-
   describe('large objects', function() {
     var getProp;
     var veryLargeObj;
@@ -599,8 +571,8 @@ describe('ngClass', function() {
       expect(getProp).not.toHaveBeenCalled();
     }));
 
-    it('should not be copied when inside an array', inject(function($compile, $rootScope) {
-      element = $compile('<div ng-class="[{foo: veryLargeObj}]"></div>')($rootScope);
+    it('should not be copied when inside a sub-object', inject(function($compile, $rootScope) {
+      element = $compile('<div ng-class="{foo: veryLargeObj}"></div>')($rootScope);
       $rootScope.veryLargeObj = veryLargeObj;
       $rootScope.$digest();
 

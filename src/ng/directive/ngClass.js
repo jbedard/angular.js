@@ -36,7 +36,7 @@ function classDirective(name, selector) {
           scope.$watch(indexWatchExpression, ngClassIndexWatchAction);
         }
 
-        scope.$watch($parse(attr[name], toClassString), ngClassWatchAction);
+        scope.$watchCollection(attr[name], ngClassWatchAction);
 
         function addClasses(classString) {
           classString = digestClassCounts(split(classString), 1);
@@ -91,11 +91,7 @@ function classDirective(name, selector) {
         }
 
         function ngClassWatchAction(newClassString) {
-          // When using a one-time binding the newClassString will return
-          // the pre-interceptor value until the one-time is complete
-          if (!isString(newClassString)) {
-            newClassString = toClassString(newClassString);
-          }
+          newClassString = toClassString(newClassString);
 
           if (oldModulo === selector) {
             updateClasses(oldClassString, newClassString);
@@ -134,7 +130,7 @@ function classDirective(name, selector) {
     var classString = classValue;
 
     if (isArray(classValue)) {
-      classString = classValue.map(toClassString).join(' ');
+      classString = classValue.join(' ');
     } else if (isObject(classValue)) {
       classString = Object.keys(classValue).
         filter(function(key) { return classValue[key]; }).
