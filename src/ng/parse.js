@@ -1747,39 +1747,29 @@ function $ParseProvider() {
     function $parse(exp, interceptorFn) {
       var parsedExpression, oneTime, cacheKey;
 
-      switch (typeof exp) {
-        case 'string':
-          exp = exp.trim();
-          cacheKey = exp;
+      if (typeof exp === 'string') {
+        exp = exp.trim();
+        cacheKey = exp;
 
-          parsedExpression = cache[cacheKey];
+        parsedExpression = cache[cacheKey];
 
-          if (!parsedExpression) {
-            if (exp.charAt(0) === ':' && exp.charAt(1) === ':') {
-              oneTime = true;
-              exp = exp.substring(2);
-            }
-            var lexer = new Lexer($parseOptions);
-            var parser = new Parser(lexer, $filter, $parseOptions);
-            parsedExpression = parser.parse(exp);
-            if (parsedExpression.constant) {
-              parsedExpression.$$watchDelegate = constantWatchDelegate;
-            } else if (oneTime) {
-              parsedExpression.oneTime = true;
-              parsedExpression.$$watchDelegate = oneTimeWatchDelegate;
-            } else if (parsedExpression.inputs) {
-              parsedExpression.$$watchDelegate = inputsWatchDelegate;
-            }
-            cache[cacheKey] = parsedExpression;
+        if (!parsedExpression) {
+          if ((oneTime = (exp.charAt(0) === ':' && exp.charAt(1) === ':'))) {
+            exp = exp.substring(2);
           }
-          return addInterceptor(parsedExpression, interceptorFn);
-
-        case 'function':
-          return addInterceptor(exp, interceptorFn);
-
-        default:
-          return addInterceptor(noop, interceptorFn);
+          var lexer = new Lexer($parseOptions);
+          var parser = new Parser(lexer, $filter, $parseOptions);
+          parsedExpression = parser.parse(exp);
+          parsedExpression.oneTime = oneTime;
+          cache[cacheKey] = parsedExpression = addWatchDelegate(parsedExpression);
+        }
+      } else if (typeof exp === 'function') {
+        parsedExpression = exp;
+      } else {
+        parsedExpression = noop;
       }
+
+      return addInterceptor(parsedExpression, interceptorFn);
     }
 
     function expressionInputDirtyCheck(newValue, oldValueOfValue, compareObjectIdentity) {
@@ -1895,9 +1885,20 @@ function $ParseProvider() {
       return unwatch;
     }
 
+    function addWatchDelegate(parsedExpression) {
+      if (parsedExpression.constant) {
+        parsedExpression.$$watchDelegate = constantWatchDelegate;
+      } else if (parsedExpression.oneTime) {
+        parsedExpression.$$watchDelegate = oneTimeWatchDelegate;
+      } else if (parsedExpression.inputs) {
+        parsedExpression.$$watchDelegate = inputsWatchDelegate;
+      }
+
+      return parsedExpression;
+    }
+
     function addInterceptor(parsedExpression, interceptorFn) {
       if (!interceptorFn) return parsedExpression;
-      var watchDelegate = parsedExpression.$$watchDelegate;
       var useInputs = false;
 
       var isDone = parsedExpression.literal ? isAllDefined : isDefined;
@@ -1917,23 +1918,20 @@ function $ParseProvider() {
 
       var fn = parsedExpression.oneTime ? oneTimeInterceptedExpression : regularInterceptedExpression;
 
-      // Propogate the literal/oneTime attributes
+      // Propogate the constant/literal/oneTime attributes
+      fn.constant = parsedExpression.constant;
       fn.literal = parsedExpression.literal;
       fn.oneTime = parsedExpression.oneTime;
 
-      // Propagate or create inputs / $$watchDelegates
-      useInputs = !parsedExpression.inputs;
-      if (watchDelegate && watchDelegate !== inputsWatchDelegate) {
-        fn.$$watchDelegate = watchDelegate;
-        fn.inputs = parsedExpression.inputs;
-      } else if (!interceptorFn.$stateful) {
-        // If there is an interceptor, but no watchDelegate then treat the interceptor like
-        // we treat filters - it is assumed to be a pure function unless flagged with $stateful
-        fn.$$watchDelegate = inputsWatchDelegate;
+      // Treat the interceptor like we treat filters - it is assumed to be a pure function
+      // unless flagged with $stateful. Propagate the expression inputs or treat the full
+      // expression as the input to the interceptor
+      if (!interceptorFn.$stateful) {
+        useInputs = !parsedExpression.inputs;
         fn.inputs = parsedExpression.inputs ? parsedExpression.inputs : [parsedExpression];
       }
 
-      return fn;
+      return addWatchDelegate(fn);
     }
   }];
 }

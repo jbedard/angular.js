@@ -2595,6 +2595,18 @@ describe('parser', function() {
           expect($parse('::foo')).toBe($parse('::foo'));
         }));
 
+        it('should mark with oneTime flag', inject(function($parse) {
+          expect($parse('::x').oneTime).toBe(true);
+          expect($parse('::[x]').oneTime).toBe(true);
+          expect($parse('::[x] | filter:y').oneTime).toBe(true);
+        }));
+
+        it('should always set the oneTime flag', inject(function($parse) {
+          expect($parse('1').oneTime).toBe(false);
+          expect($parse('x').oneTime).toBe(false);
+          expect($parse('[]').oneTime).toBe(false);
+        }));
+
         it('should not affect calling the parseFn directly', inject(function($parse, $rootScope) {
           var fn = $parse('::foo');
           $rootScope.$watch(fn);
