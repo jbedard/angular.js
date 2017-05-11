@@ -581,7 +581,8 @@ function $RootScopeProvider() {
        *    de-registration function is executed, the internal watch operation is terminated.
        */
       $watchCollection: function(obj, listener) {
-        $watchCollectionInterceptor.$stateful = true;
+        // Literals already have all the inputs watched so the intercepor adds no state
+        $watchCollectionInterceptor.$stateful = !$parse(obj).literal;
 
         var self = this;
         // the current value, updated on each dirty-check run
