@@ -432,7 +432,6 @@ function $RootScopeProvider() {
               array.$$digestWatchIndex--;
             }
           }
-          lastDirtyWatch = null;
         };
       },
 
